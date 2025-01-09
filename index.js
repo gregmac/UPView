@@ -38,12 +38,13 @@ app.on('window-all-closed', () => {
 })
 
 app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-    var host = new URL(url).host
-    if (host === startUrl.host) {
+    var hostname = new URL(url).hostname
+    if (hostname === startUrl.hostname) {
         // bypass SSL errors
         event.preventDefault()
         callback(true)
     } else {
+        console.log(`cert error: ${url} ${error}`)
         callback(false)
     }
 })
