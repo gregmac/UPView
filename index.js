@@ -1,14 +1,18 @@
 // Modules to control application life and create native browser window
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, session } = require('electron')
 const path = require('node:path')
 
 const startUrl = new URL('https://192.168.10.1/protect/dashboard')
+
 const createWindow = () => {
     // Create the browser window.
     const mainWindow = new BrowserWindow({
         width: 800,
         height: 600,
     })
+
+    // make sure useragent is detected as compatible
+    mainWindow.webContents.userAgent = modifyUserAgent(mainWindow.webContents.userAgent)
 
     // and load the index.html of the app.
     mainWindow.loadURL(startUrl.href);
@@ -38,6 +42,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+    console.log(`cert error: ${url} ${error}`)
     var hostname = new URL(url).hostname
     if (hostname === startUrl.hostname) {
         // bypass SSL errors
@@ -48,3 +53,8 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
         callback(false)
     }
 })
+
+// Make sure agent ends with Chrome/xxx
+function modifyUserAgent(userAgent) {
+    return userAgent.replace(/^(.*\(.*\).*Chrome\/[^ ]+).*$/, '$1');
+}
