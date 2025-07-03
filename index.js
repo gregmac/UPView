@@ -7,13 +7,14 @@ const { launchMainWindow } = require('./mainWindow')
 
 let CONFIG_PATH
 let config;
+let mainWindow = null;
 let defaultConfig = { startUrl: 'https://192.168.10.1/protect/dashboard' }
 
 function loadConfig() {
     try {
         if (!fs.existsSync(CONFIG_PATH)) {
             console.log("Config file not found ", CONFIG_PATH)
-            return defaultConfig
+            return null
         }
         console.log("Loading config from", CONFIG_PATH)
         return JSON.parse(fs.readFileSync(CONFIG_PATH))
@@ -33,14 +34,17 @@ function saveConfig(config) {
 }
 
 function handleOpenConfig() {
-    openConfigWindow(config, (newConfig) => {
+    openConfigWindow(config || defaultConfig, (newConfig) => {
         if (!newConfig.startUrl) return // Don't save if empty
         config = { ...config, ...newConfig }
         saveConfig(config)
-        // Reload main window with new startUrl
-        const mainWindow = BrowserWindow.getAllWindows()[0]
-        if (mainWindow && config.startUrl) {
+        // Check if main window exists and is not destroyed
+        if (mainWindow && !mainWindow.isDestroyed() && config.startUrl) {
+            console.log("Reloading main window to", config.startUrl)
             mainWindow.loadURL(config.startUrl)
+        } else if (config.startUrl) {
+            console.log("Launching main window to", config.startUrl)
+            mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent)
         }
     }, BrowserWindow.getAllWindows()[0])
 }
@@ -67,30 +71,18 @@ app.whenReady().then(() => {
     CONFIG_PATH = path.join(app.getPath('userData'), 'config.json')
     config = loadConfig()
 
-    function showConfigAndLaunch() {
-        openConfigWindow(config || defaultConfig, (newConfig) => {
-            if (!newConfig.startUrl) {
-                showConfigAndLaunch()
-                return
-            }
-            config = { ...config, ...newConfig }
-            saveConfig(config)
-            launchMainWindow(new URL(config.startUrl), modifyUserAgent)
-        }, null)
-    }
-
     if (!config || !config.startUrl) {
-        showConfigAndLaunch()
+        handleOpenConfig()
     } else {
-        launchMainWindow(new URL(config.startUrl), modifyUserAgent)
+        mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent)
     }
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             if (!config || !config.startUrl) {
-                showConfigAndLaunch()
+                handleOpenConfig()
             } else {
-                launchMainWindow(new URL(config.startUrl), modifyUserAgent)
+                mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent)
             }
         }
     })
