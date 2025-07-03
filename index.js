@@ -11,10 +11,11 @@ let defaultConfig = { startUrl: 'https://192.168.10.1/protect/dashboard' }
 
 function loadConfig() {
     try {
-        console.log("Loading config from", CONFIG_PATH)
         if (!fs.existsSync(CONFIG_PATH)) {
-            return null
+            console.log("Config file not found ", CONFIG_PATH)
+            return defaultConfig
         }
+        console.log("Loading config from", CONFIG_PATH)
         return JSON.parse(fs.readFileSync(CONFIG_PATH))
     } catch (e) {
         console.error('Failed to load config:', e)
@@ -24,6 +25,7 @@ function loadConfig() {
 
 function saveConfig(config) {
     try {
+        console.log("Saving config to", CONFIG_PATH)
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
     } catch (e) {
         console.error('Failed to save config:', e)
