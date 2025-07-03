@@ -78,12 +78,22 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, onWindowStateC
     // Show window after state is restored
     mainWindow.show()
 
-    // Add event listeners to save window state
+    // Add event listeners to save window state with debouncing
     if (onWindowStateChange) {
+        let saveTimeout = null
+        
         const saveState = () => {
             const state = getWindowState(mainWindow)
             if (state) {
-                onWindowStateChange(state)
+                // Clear existing timeout
+                if (saveTimeout) {
+                    clearTimeout(saveTimeout)
+                }
+                
+                // Set new timeout for 1 second
+                saveTimeout = setTimeout(() => {
+                    onWindowStateChange(state)
+                }, 1000)
             }
         }
         
