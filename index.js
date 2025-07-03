@@ -60,6 +60,37 @@ const menuTemplate = [
             { type: 'separator' },
             { role: 'quit' }
         ]
+    },
+    {
+        label: 'View',
+        submenu: [
+            { role: 'reload' },
+            { role: 'forceReload' },
+            { role: 'toggleDevTools' },
+            { type: 'separator' },
+            { role: 'resetZoom' },
+            { role: 'zoomIn' },
+            { role: 'zoomOut' },
+            { type: 'separator' },
+            { role: 'togglefullscreen' }
+        ]
+    },
+    {
+        label: 'Help',
+        submenu: [
+            {
+                label: 'About',
+                click: () => {
+                    const packageJson = require('./package.json')
+                    dialog.showMessageBox({
+                        type: 'info',
+                        title: 'About',
+                        message: `UnifiProtect Live View`,
+                        detail: `Version: ${packageJson.version}\n\nDesktop viewer for Unifi Protect`
+                    })
+                }
+            }
+        ]
     }
 ]
 Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate))
