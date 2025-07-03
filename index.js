@@ -163,34 +163,3 @@ function saveWindowState(windowState) {
         saveConfig(config)
     }
 }
-
-function restoreWindowState(mainWindow) {
-    if (config.windowState) {
-        const state = config.windowState
-        
-        if (state.x !== undefined && state.y !== undefined) {
-            console.log("Restoring window state", state)
-            mainWindow.setBounds({
-                width: state.width,
-                height: state.height,
-                x: state.x,
-                y: state.y
-            })
-        } else {
-            console.log("Restoring window state", state)
-            mainWindow.setSize(state.width, state.height)
-        }
-        
-        if (state.maximized) {
-            mainWindow.maximize()
-        }
-        
-        if (state.fullscreen) {
-            mainWindow.setFullScreen(true)
-        }
-        
-        if (state.devToolsOpen) {
-            mainWindow.webContents.openDevTools()
-        }
-    }
-}
