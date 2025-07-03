@@ -3,12 +3,23 @@ const { app, BrowserWindow, session, Menu, dialog } = require('electron')
 const path = require('node:path')
 const fs = require('fs')
 const { openConfigWindow } = require('./configWindow')
-const { launchMainWindow } = require('./mainWindow')
+const { launchMainWindow, getWindowState } = require('./mainWindow')
 
 let CONFIG_PATH
 let config;
 let mainWindow = null;
-let defaultConfig = { startUrl: 'https://192.168.10.1/protect/dashboard' }
+let defaultConfig = { 
+    startUrl: 'https://192.168.10.1/protect/dashboard',
+    windowState: {
+        width: 800,
+        height: 600,
+        x: undefined,
+        y: undefined,
+        maximized: false,
+        fullscreen: false,
+        devToolsOpen: true
+    }
+}
 
 function loadConfig() {
     try {
@@ -44,7 +55,7 @@ function handleOpenConfig() {
             mainWindow.loadURL(config.startUrl)
         } else if (config.startUrl) {
             console.log("Launching main window to", config.startUrl)
-            mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent)
+            mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, saveWindowState)
         }
     }, BrowserWindow.getAllWindows()[0])
 }
@@ -105,7 +116,7 @@ app.whenReady().then(() => {
     if (!config || !config.startUrl) {
         handleOpenConfig()
     } else {
-        mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent)
+        mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, saveWindowState)
     }
 
     app.on('activate', () => {
@@ -113,7 +124,7 @@ app.whenReady().then(() => {
             if (!config || !config.startUrl) {
                 handleOpenConfig()
             } else {
-                mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent)
+                mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, saveWindowState)
             }
         }
     })
@@ -143,4 +154,43 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 // Make sure agent ends with Chrome/xxx
 function modifyUserAgent(userAgent) {
     return userAgent.replace(/^(.*\(.*\).*Chrome\/[^ ]+).*$/, '$1');
+}
+
+function saveWindowState(windowState) {
+    if (windowState) {
+        config.windowState = windowState
+        console.log("Saving window state", config.windowState)
+        saveConfig(config)
+    }
+}
+
+function restoreWindowState(mainWindow) {
+    if (config.windowState) {
+        const state = config.windowState
+        
+        if (state.x !== undefined && state.y !== undefined) {
+            console.log("Restoring window state", state)
+            mainWindow.setBounds({
+                width: state.width,
+                height: state.height,
+                x: state.x,
+                y: state.y
+            })
+        } else {
+            console.log("Restoring window state", state)
+            mainWindow.setSize(state.width, state.height)
+        }
+        
+        if (state.maximized) {
+            mainWindow.maximize()
+        }
+        
+        if (state.fullscreen) {
+            mainWindow.setFullScreen(true)
+        }
+        
+        if (state.devToolsOpen) {
+            mainWindow.webContents.openDevTools()
+        }
+    }
 }
