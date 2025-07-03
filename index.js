@@ -1,56 +1,96 @@
 // Modules to control application life and create native browser window
-const { app, BrowserWindow, session } = require('electron')
+const { app, BrowserWindow, session, Menu, dialog } = require('electron')
 const path = require('node:path')
+const fs = require('fs')
+const { openConfigWindow } = require('./configWindow')
+const { launchMainWindow } = require('./mainWindow')
 
-const startUrl = new URL('https://192.168.10.1/protect/dashboard')
+let CONFIG_PATH
+let config;
+let defaultConfig = { startUrl: 'https://192.168.10.1/protect/dashboard' }
 
-const createWindow = () => {
-    // Create the browser window.
-    const mainWindow = new BrowserWindow({
-        width: 800,
-        height: 600,
-    })
-
-    // make sure useragent is detected as compatible
-    mainWindow.webContents.userAgent = modifyUserAgent(mainWindow.webContents.userAgent)
-
-    mainWindow.webContents.on('will-navigate', (event) => {
-        console.log('will-navigate',event)
-    })
-    mainWindow.webContents.on('did-navigate', (event,url,httpResponseCode,httpStatusText) => {
-        console.log('did-navigate',event,url,httpResponseCode,httpStatusText)
-    })
-    mainWindow.webContents.on('did-navigate-in-page', (event,url,isMainFrame) => {
-        console.log('did-navigate-in-page',event,url,isMainFrame)
-    })
-    
-    mainWindow.webContents.on('render-process-gone', () => {
-        console.log('render-process-gone')
-        // not sure what causes this, but it goes to a blank screen.
-        // Refresh back to starting URL
-        mainWindow.loadURL(startUrl.href);
-    })
-    mainWindow.webContents.on('unresponsive', () => {
-        console.log('unresponsive')
-    })
-
-    // and load the index.html of the app.
-    mainWindow.loadURL(startUrl.href);
-
-    // Open the DevTools.
-    mainWindow.webContents.openDevTools()
+function loadConfig() {
+    try {
+        console.log("Loading config from", CONFIG_PATH)
+        if (!fs.existsSync(CONFIG_PATH)) {
+            return null
+        }
+        return JSON.parse(fs.readFileSync(CONFIG_PATH))
+    } catch (e) {
+        console.error('Failed to load config:', e)
+        throw e
+    }
 }
+
+function saveConfig(config) {
+    try {
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
+    } catch (e) {
+        console.error('Failed to save config:', e)
+    }
+}
+
+function handleOpenConfig() {
+    openConfigWindow(config, (newConfig) => {
+        if (!newConfig.startUrl) return // Don't save if empty
+        config = { ...config, ...newConfig }
+        saveConfig(config)
+        // Reload main window with new startUrl
+        const mainWindow = BrowserWindow.getAllWindows()[0]
+        if (mainWindow && config.startUrl) {
+            mainWindow.loadURL(config.startUrl)
+        }
+    }, BrowserWindow.getAllWindows()[0])
+}
+
+const menuTemplate = [
+    {
+        label: 'File',
+        submenu: [
+            {
+                label: 'Configuration',
+                click: handleOpenConfig
+            },
+            { type: 'separator' },
+            { role: 'quit' }
+        ]
+    }
+]
+Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate))
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-    createWindow()
+    CONFIG_PATH = path.join(app.getPath('userData'), 'config.json')
+    config = loadConfig()
+
+    function showConfigAndLaunch() {
+        openConfigWindow(config || defaultConfig, (newConfig) => {
+            if (!newConfig.startUrl) {
+                showConfigAndLaunch()
+                return
+            }
+            config = { ...config, ...newConfig }
+            saveConfig(config)
+            launchMainWindow(new URL(config.startUrl), modifyUserAgent)
+        }, null)
+    }
+
+    if (!config || !config.startUrl) {
+        showConfigAndLaunch()
+    } else {
+        launchMainWindow(new URL(config.startUrl), modifyUserAgent)
+    }
 
     app.on('activate', () => {
-        // On macOS it's common to re-create a window in the app when the
-        // dock icon is clicked and there are no other windows open.
-        if (BrowserWindow.getAllWindows().length === 0) createWindow()
+        if (BrowserWindow.getAllWindows().length === 0) {
+            if (!config || !config.startUrl) {
+                showConfigAndLaunch()
+            } else {
+                launchMainWindow(new URL(config.startUrl), modifyUserAgent)
+            }
+        }
     })
 })
 
@@ -62,8 +102,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-    var hostname = new URL(url).hostname
-    if (hostname === startUrl.hostname) {
+    var reqHostname = new URL(url).hostname
+    var configHostname = new URL(config.startUrl).hostname
+    if (reqHostname === configHostname) {
         // bypass SSL errors
         //console.log(`cert error ignored: ${url} ${error}`)
         event.preventDefault()
