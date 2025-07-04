@@ -98,6 +98,11 @@
                     document.getElementById('path').select();
                 }
             });
+            document.getElementById('path').addEventListener('input', function(e) {
+                if (this.value.startsWith('/')) {
+                    this.value = this.value.replace(/^\/+/, '');
+                }
+            });
         });
         window.onbeforeunload = function() {
             window.electronAPI.send('config-closed');
