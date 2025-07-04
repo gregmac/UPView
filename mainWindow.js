@@ -51,7 +51,7 @@ function validateWindowBounds(bounds) {
     return false
 }
 
-function launchMainWindow(startUrl, modifyUserAgent, windowState, onWindowStateChange) {
+function launchMainWindow(startUrl, modifyUserAgent, windowState, modifyConfig) {
     console.log("Launching main window", startUrl, windowState)
     
     // Validate window bounds if we have saved state
@@ -96,6 +96,20 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, onWindowStateC
     })
     mainWindow.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
         console.log('did-navigate-in-page', event, url, isMainFrame)
+        try {
+            const parsedUrl = new URL(url)
+            if (parsedUrl.pathname.startsWith('/protect/dashboard/')) {
+                modifyConfig((oldConfig) => {
+                    if (oldConfig.startUrl !== url) {
+                        console.log('Updated config.startUrl to', url)
+                        return { ...oldConfig, startUrl: url }
+                    }
+                    return oldConfig
+                })
+            }
+        } catch (e) {
+            // Ignore invalid URLs
+        }
     })
     
     mainWindow.webContents.on('render-process-gone', () => {
@@ -175,42 +189,28 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, onWindowStateC
         mainWindow.webContents.openDevTools()
     }
 
-    // Add event listeners to save window state with debouncing
-    if (onWindowStateChange) {
+    // For window state changes, use modifyConfig
+    if (modifyConfig) {
         let saveTimeout = null
-        
         const saveState = () => {
             const state = getWindowState(mainWindow)
             if (state) {
-                // Clear existing timeout
-                if (saveTimeout) {
-                    clearTimeout(saveTimeout)
-                }
-                
-                // Set new timeout for 1 second
+                if (saveTimeout) clearTimeout(saveTimeout)
                 saveTimeout = setTimeout(() => {
-                    onWindowStateChange(state)
+                    modifyConfig((oldConfig) => ({ ...oldConfig, windowState: state }))
                 }, 1000)
             }
         }
-        
         mainWindow.on('resize', () => {
-            if (!mainWindow.isMaximized() && !mainWindow.isFullScreen()) {
-                saveState()
-            }
+            if (!mainWindow.isMaximized() && !mainWindow.isFullScreen()) saveState()
         })
-        
         mainWindow.on('move', () => {
-            if (!mainWindow.isMaximized() && !mainWindow.isFullScreen()) {
-                saveState()
-            }
+            if (!mainWindow.isMaximized() && !mainWindow.isFullScreen()) saveState()
         })
-        
         mainWindow.on('maximize', saveState)
         mainWindow.on('unmaximize', saveState)
         mainWindow.on('enter-full-screen', saveState)
         mainWindow.on('leave-full-screen', saveState)
-        
         mainWindow.webContents.on('devtools-opened', saveState)
         mainWindow.webContents.on('devtools-closed', saveState)
     }

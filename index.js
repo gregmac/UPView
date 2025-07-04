@@ -36,10 +36,14 @@ function loadConfig() {
     }
 }
 
-function saveConfig(config) {
+function modifyConfig(callback) {
     try {
-        console.log("Saving config to", CONFIG_PATH)
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
+        const newConfig = callback(config)
+        if (newConfig) {
+            config = newConfig
+            console.log("Saving config to", CONFIG_PATH)
+            fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
+        }
     } catch (e) {
         console.error('Failed to save config:', e)
     }
@@ -48,15 +52,14 @@ function saveConfig(config) {
 function handleOpenConfig() {
     openConfigWindow(config || defaultConfig, (newConfig) => {
         if (!newConfig.startUrl) return // Don't save if empty
-        config = { ...config, ...newConfig }
-        saveConfig(config)
+        modifyConfig((oldConfig) => ({ ...oldConfig, ...newConfig }))
         // Check if main window exists and is not destroyed
         if (mainWindow && !mainWindow.isDestroyed() && config.startUrl) {
             console.log("Reloading main window to", config.startUrl)
             mainWindow.loadURL(config.startUrl)
         } else if (config.startUrl) {
             console.log("Launching main window to", config.startUrl)
-            mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, saveWindowState)
+            mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, modifyConfig)
         }
     }, BrowserWindow.getAllWindows()[0])
 }
@@ -103,11 +106,12 @@ const menuTemplate = [
                         const isAlwaysOnTop = menuItem.checked
                         mainWindow.setAlwaysOnTop(isAlwaysOnTop)
                         console.log('Always on top:', isAlwaysOnTop ? 'enabled' : 'disabled')
-                        
                         // Save to config
                         if (config && config.windowState) {
-                            config.windowState.alwaysOnTop = isAlwaysOnTop
-                            saveConfig(config)
+                            modifyConfig((oldConfig) => ({
+                                ...oldConfig,
+                                windowState: { ...oldConfig.windowState, alwaysOnTop: isAlwaysOnTop }
+                            }))
                         }
                     }
                 }
@@ -144,7 +148,7 @@ app.whenReady().then(() => {
     if (!config || !config.startUrl) {
         handleOpenConfig()
     } else {
-        mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, saveWindowState)
+        mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, modifyConfig)
     }
 
     app.on('activate', () => {
@@ -152,7 +156,7 @@ app.whenReady().then(() => {
             if (!config || !config.startUrl) {
                 handleOpenConfig()
             } else {
-                mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, saveWindowState)
+                mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, modifyConfig)
             }
         }
     })
@@ -184,10 +188,3 @@ function modifyUserAgent(userAgent) {
     return userAgent.replace(/^(.*\(.*\).*Chrome\/[^ ]+).*$/, '$1');
 }
 
-function saveWindowState(windowState) {
-    if (windowState) {
-        config.windowState = windowState
-        console.log("Saving window state", config.windowState)
-        saveConfig(config)
-    }
-}
