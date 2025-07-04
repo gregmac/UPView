@@ -65,6 +65,15 @@ const menuTemplate = [
         label: 'File',
         submenu: [
             {
+                label: 'Load Main Page',
+                click: () => {
+                    if (mainWindow && !mainWindow.isDestroyed() && config && config.startUrl) {
+                        console.log("Loading main page:", config.startUrl)
+                        mainWindow.loadURL(config.startUrl)
+                    }
+                }
+            },
+            {
                 label: 'Configuration',
                 click: handleOpenConfig
             },
