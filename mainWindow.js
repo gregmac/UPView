@@ -1,4 +1,4 @@
-const { BrowserWindow } = require('electron')
+const { BrowserWindow, screen } = require('electron')
 
 function getWindowState(mainWindow) {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -21,14 +21,66 @@ function getWindowState(mainWindow) {
     }
 }
 
+function validateWindowBounds(bounds) {
+    const displays = screen.getAllDisplays()
+    console.log("Validating bounds:", bounds, "against displays:", displays.map(d => d.bounds))
+    
+    // Check if the window bounds are mostly within any display
+    for (const display of displays) {
+        const displayBounds = display.bounds
+        
+        // Calculate how much of the window is within this display
+        const overlapX = Math.max(0, Math.min(bounds.x + bounds.width, displayBounds.x + displayBounds.width) - Math.max(bounds.x, displayBounds.x))
+        const overlapY = Math.max(0, Math.min(bounds.y + bounds.height, displayBounds.y + displayBounds.height) - Math.max(bounds.y, displayBounds.y))
+        const overlapArea = overlapX * overlapY
+        const windowArea = bounds.width * bounds.height
+        const overlapPercentage = overlapArea / windowArea
+        
+        console.log(`Display ${displayBounds.x},${displayBounds.y}: overlap ${overlapX}x${overlapY} = ${overlapArea}, window area = ${windowArea}, percentage = ${(overlapPercentage * 100).toFixed(1)}%`)
+        
+        // Consider valid if at least 50% of the window is within the display
+        if (overlapPercentage >= 0.5) {
+            console.log("Bounds valid for display:", displayBounds, `(${(overlapPercentage * 100).toFixed(1)}% overlap)`)
+            return true
+        }
+    }
+    
+    console.log("Bounds invalid for all displays")
+    return false
+}
+
 function launchMainWindow(startUrl, modifyUserAgent, windowState, onWindowStateChange) {
     console.log("Launching main window", startUrl, windowState)
+    
+    // Validate window bounds if we have saved state
+    let useSavedBounds = false
+    let initialBounds = { width: 800, height: 600 }
+    
+    if (windowState && windowState.x !== undefined && windowState.y !== undefined) {
+        const bounds = {
+            x: windowState.x,
+            y: windowState.y,
+            width: windowState.width || 800,
+            height: windowState.height || 600
+        }
+        
+        if (validateWindowBounds(bounds)) {
+            useSavedBounds = true
+            initialBounds = bounds
+            console.log("Using saved window bounds:", bounds)
+        } else {
+            console.log("Saved window bounds invalid, using default positioning")
+        }
+    }
+    
     const mainWindow = new BrowserWindow({
-        width: windowState ? windowState.width : 800,
-        height: windowState ? windowState.height : 600,
-        x: windowState && windowState.x !== undefined ? windowState.x : undefined,
-        y: windowState && windowState.y !== undefined ? windowState.y : undefined,
-        show: false // Don't show until we've set up the state
+        width: initialBounds.width,
+        height: initialBounds.height,
+        center: false,
+        show: false,
+        useContentSize: false,
+        resizable: true,
+        movable: true
     })
 
     // make sure useragent is detected as compatible
@@ -57,6 +109,33 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, onWindowStateC
     // Load main page
     mainWindow.loadURL(startUrl.href)
 
+    // Set position after window is ready but before showing
+    if (useSavedBounds) {
+        mainWindow.once('ready-to-show', () => {
+            console.log("Window ready, setting bounds to:", initialBounds)
+            mainWindow.setBounds(initialBounds)
+            mainWindow.setPosition(initialBounds.x, initialBounds.y)
+            
+            // Show window after position is set
+            mainWindow.show()
+            
+            // Debug: Check final position
+            setTimeout(() => {
+                const finalBounds = mainWindow.getBounds()
+                console.log("Final window bounds after show:", finalBounds)
+            }, 100)
+        })
+    } else {
+        // Show window immediately if no saved bounds
+        mainWindow.show()
+        
+        // Debug: Check final position
+        setTimeout(() => {
+            const finalBounds = mainWindow.getBounds()
+            console.log("Final window bounds after show:", finalBounds)
+        }, 100)
+    }
+
     // Restore window state
     if (windowState) {
         if (windowState.maximized) {
@@ -74,9 +153,6 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, onWindowStateC
         // Open dev tools initially if no state saved
         mainWindow.webContents.openDevTools()
     }
-
-    // Show window after state is restored
-    mainWindow.show()
 
     // Add event listeners to save window state with debouncing
     if (onWindowStateChange) {
