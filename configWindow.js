@@ -23,10 +23,8 @@ function openConfigWindow(config, onSave, parentWindow) {
         configWindow.focus()
         return
     }
-    if (!configHandlerRegistered) {
-        ipcMain.handle('get-config', () => config);
-        configHandlerRegistered = true;
-    }
+    ipcMain.removeHandler('get-config'); // Always remove previous handler
+    ipcMain.handle('get-config', () => config);
     configWindow = new BrowserWindow({
         width: 880,
         height: 400,
