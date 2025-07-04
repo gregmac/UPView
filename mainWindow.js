@@ -108,6 +108,12 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, onWindowStateC
         console.log('unresponsive')
     })
 
+    // Set window open handler - this is the modern way to handle window.open
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        shell.openExternal(url)
+        return { action: 'deny' }
+    })
+
     // Load main page
     mainWindow.loadURL(startUrl.href)
 
