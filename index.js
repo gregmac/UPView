@@ -17,7 +17,8 @@ let defaultConfig = {
         y: undefined,
         maximized: false,
         fullscreen: false,
-        devToolsOpen: true
+        devToolsOpen: true,
+        alwaysOnTop: false
     }
 }
 
@@ -92,7 +93,25 @@ const menuTemplate = [
             { role: 'zoomIn' },
             { role: 'zoomOut' },
             { type: 'separator' },
-            { role: 'togglefullscreen' }
+            { role: 'togglefullscreen' },
+            {
+                label: 'Always on Top',
+                type: 'checkbox',
+                checked: config && config.windowState ? config.windowState.alwaysOnTop : false,
+                click: (menuItem) => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        const isAlwaysOnTop = menuItem.checked
+                        mainWindow.setAlwaysOnTop(isAlwaysOnTop)
+                        console.log('Always on top:', isAlwaysOnTop ? 'enabled' : 'disabled')
+                        
+                        // Save to config
+                        if (config && config.windowState) {
+                            config.windowState.alwaysOnTop = isAlwaysOnTop
+                            saveConfig(config)
+                        }
+                    }
+                }
+            }
         ]
     },
     {

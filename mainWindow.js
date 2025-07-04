@@ -9,6 +9,7 @@ function getWindowState(mainWindow) {
     const isMaximized = mainWindow.isMaximized()
     const isFullScreen = mainWindow.isFullScreen()
     const isDevToolsOpen = mainWindow.webContents.isDevToolsOpened()
+    const isAlwaysOnTop = mainWindow.isAlwaysOnTop()
     
     return {
         width: bounds.width,
@@ -17,7 +18,8 @@ function getWindowState(mainWindow) {
         y: bounds.y,
         maximized: isMaximized,
         fullscreen: isFullScreen,
-        devToolsOpen: isDevToolsOpen
+        devToolsOpen: isDevToolsOpen,
+        alwaysOnTop: isAlwaysOnTop
     }
 }
 
@@ -148,6 +150,10 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, onWindowStateC
         
         if (windowState.devToolsOpen) {
             mainWindow.webContents.openDevTools()
+        }
+        
+        if (windowState.alwaysOnTop) {
+            mainWindow.setAlwaysOnTop(true)
         }
     } else {
         // Open dev tools initially if no state saved
