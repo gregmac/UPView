@@ -126,6 +126,15 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, onWindowStateC
                 const finalBounds = mainWindow.getBounds()
                 console.log("Final window bounds after show:", finalBounds)
             }, 100)
+            
+            // Add keyboard shortcut for Ctrl+= (zoom in) in addition to default Ctrl++
+            mainWindow.webContents.on('before-input-event', (event, input) => {
+                if (input.control && input.key === '=' && !input.shift) {
+                    event.preventDefault()
+                    const currentZoom = mainWindow.webContents.getZoomLevel()
+                    mainWindow.webContents.setZoomLevel(currentZoom + 1)
+                }
+            })
         })
     } else {
         // Show window immediately if no saved bounds
