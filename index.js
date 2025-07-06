@@ -96,18 +96,16 @@ const menuTemplate = [
             { role: 'zoomIn' },
             { role: 'zoomOut' },
             { type: 'separator' },
-            { role: 'togglefullscreen' },
             {
                 label: 'Always on Top',
                 type: 'checkbox',
                 checked: config && config.windowState ? config.windowState.alwaysOnTop : false,
+                accelerator: 'F10',
                 click: (menuItem) => {
                     if (mainWindow && !mainWindow.isDestroyed()) {
                         const isAlwaysOnTop = menuItem.checked
                         mainWindow.setAlwaysOnTop(isAlwaysOnTop)
-                        console.log('Always on top:', isAlwaysOnTop ? 'enabled' : 'disabled')
-                        // Save to config
-                        if (config && config.windowState) {
+                        if (typeof modifyConfig === 'function') {
                             modifyConfig((oldConfig) => ({
                                 ...oldConfig,
                                 windowState: { ...oldConfig.windowState, alwaysOnTop: isAlwaysOnTop }
@@ -115,7 +113,8 @@ const menuTemplate = [
                         }
                     }
                 }
-            }
+            },
+            { role: 'togglefullscreen' },
         ]
     },
     {
