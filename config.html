@@ -51,10 +51,14 @@
                         </div>
                     </div>
                 </div>
-            </div>
-            <div class="button-row">
-                <button type="button" onclick="window.close()">Cancel</button>
-                <button type="submit">Save</button>
+                <div class="form-group" style="margin-top: 18px; display: flex; align-items: center;">
+                    <input type="checkbox" id="validateSSL" style="margin-right: 8px;" />
+                    <label for="validateSSL" style="margin: 0;">Require Valid SSL Certificate</label>
+                </div>
+                <div class="button-row">
+                    <button type="button" onclick="window.close()">Cancel</button>
+                    <button type="submit">Save</button>
+                </div>
             </div>
         </form>
     </div>
@@ -78,13 +82,15 @@
             document.getElementById('protocol').value = initial.protocol;
             document.getElementById('hostname').value = initial.hostname;
             document.getElementById('path').value = initial.path || (config.startUrl ? '' : 'protect/dashboard');
+            document.getElementById('validateSSL').checked = !!config.validateSSL;
 
             document.getElementById('configForm').onsubmit = function(e) {
                 e.preventDefault();
                 window.electronAPI.send('save-config', {
                     protocol: document.getElementById('protocol').value,
                     hostname: document.getElementById('hostname').value.trim(),
-                    path: document.getElementById('path').value.trim()
+                    path: document.getElementById('path').value.trim(),
+                    validateSSL: document.getElementById('validateSSL').checked
                 });
             };
             function handlePaste(e) {

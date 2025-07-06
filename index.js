@@ -19,7 +19,8 @@ let defaultConfig = {
         fullscreen: false,
         devToolsOpen: true,
         alwaysOnTop: false
-    }
+    },
+    validateSSL: false
 }
 
 function loadConfig() {
@@ -171,9 +172,8 @@ app.on('window-all-closed', () => {
 app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
     var reqHostname = new URL(url).hostname
     var configHostname = new URL(config.startUrl).hostname
-    if (reqHostname === configHostname) {
+    if (reqHostname === configHostname && (!config.validateSSL)) {
         // bypass SSL errors
-        //console.log(`cert error ignored: ${url} ${error}`)
         event.preventDefault()
         callback(true)
     } else {
