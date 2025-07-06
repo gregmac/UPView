@@ -51,7 +51,7 @@ function validateWindowBounds(bounds) {
     return false
 }
 
-function launchMainWindow(startUrl, modifyUserAgent, windowState, modifyConfig) {
+function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, modifyConfig) {
     console.log("Launching main window", startUrl, windowState)
     
     // Validate window bounds if we have saved state
@@ -97,8 +97,9 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, modifyConfig) 
     mainWindow.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
         console.log('did-navigate-in-page', event, url, isMainFrame)
         try {
-            const parsedUrl = new URL(url)
-            if (parsedUrl.pathname.startsWith('/protect/dashboard/')) {
+            if (isDashboardUrl(url)) {
+                console.log('did-navigate-in-page dashboard URL detected');
+                clearIdleTimeout();
                 modifyConfig((oldConfig) => {
                     if (oldConfig.startUrl !== url) {
                         console.log('Updated config.startUrl to', url)
@@ -106,9 +107,11 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, modifyConfig) 
                     }
                     return oldConfig
                 })
+            } else {
+                startIdleTimeout(url);
             }
         } catch (e) {
-            // Ignore invalid URLs
+            console.log("did-navigate-in-page error", e);
         }
     })
     
@@ -214,6 +217,80 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, modifyConfig) 
         mainWindow.webContents.on('devtools-opened', saveState)
         mainWindow.webContents.on('devtools-closed', saveState)
     }
+    
+    // Place after mainWindow is created
+    let idleTimeout = null;
+    let lastIdleUrl = null;
+    function clearIdleTimeout() {
+        if (idleTimeout) {
+            clearTimeout(idleTimeout);
+            idleTimeout = null;
+        }
+    }
+    function startIdleTimeout(url) {
+        clearIdleTimeout();
+        const config = getConfig();
+        if (!config.idleTimeoutSeconds || config.idleTimeoutSeconds <= 0) return;
+        lastIdleUrl = url;
+        console.log(`[IdleTimeout] Started: ${config.idleTimeoutSeconds}s for URL: ${url}`);
+        idleTimeout = setTimeout(() => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                console.log('[IdleTimeout] Timeout reached, returning to main page:', getConfig().startUrl);
+                mainWindow.loadURL(getConfig().startUrl);
+            }
+        }, config.idleTimeoutSeconds * 1000);
+    }
+    function isDashboardUrl(url) {
+        try {
+            const parsedUrl = new URL(url);
+            return parsedUrl.pathname.startsWith('/protect/dashboard');
+        } catch (e) {
+            return false;
+        }
+    }
+    mainWindow.webContents.on('did-navigate', (event, url, httpResponseCode, httpStatusText) => {
+        if (!isDashboardUrl(url)) {
+            startIdleTimeout(url);
+        } else {
+            clearIdleTimeout();
+        }
+    });
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+        if (!isDashboardUrl(url)) {
+            startIdleTimeout(url);
+        } else {
+            clearIdleTimeout();
+        }
+    });
+    mainWindow.webContents.on('dom-ready', () => {
+        mainWindow.webContents.executeJavaScript(`
+            (function() {
+                let lastActivity = Date.now();
+                function resetIdle() {
+                    window.postMessage('reset-idle-timer', '*');
+                }
+                window.addEventListener('mousemove', resetIdle);
+                window.addEventListener('mousedown', resetIdle);
+                window.addEventListener('keydown', resetIdle);
+            })();
+        `);
+    });
+    mainWindow.webContents.on('console-message', (event, level, message) => {
+        if (message === 'reset-idle-timer') {
+            clearIdleTimeout();
+            if (lastIdleUrl && !isDashboardUrl(lastIdleUrl)) {
+                startIdleTimeout(lastIdleUrl);
+            }
+        }
+    });
+    mainWindow.webContents.on('ipc-message', (event, channel) => {
+        if (channel === 'reset-idle-timer') {
+            clearIdleTimeout();
+            if (lastIdleUrl && !isDashboardUrl(lastIdleUrl)) {
+                startIdleTimeout(lastIdleUrl);
+            }
+        }
+    });
     
     return mainWindow
 }

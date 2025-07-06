@@ -45,7 +45,7 @@ function openConfigWindow(config, onSave, parentWindow) {
 
     ipcMain.once('save-config', (event, data) => {
         let url = data.protocol + '://' + data.hostname + '/' + data.path.replace(/^\//, '')
-        onSave({ startUrl: url, validateSSL: !!data.validateSSL })
+        onSave({ startUrl: url, validateSSL: !!data.validateSSL, idleTimeoutSeconds: Number(data.idleTimeoutSeconds) || 0 })
         if (configWindow) configWindow.close()
     })
     ipcMain.once('config-closed', () => {

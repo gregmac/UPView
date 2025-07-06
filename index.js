@@ -20,7 +20,8 @@ let defaultConfig = {
         devToolsOpen: true,
         alwaysOnTop: false
     },
-    validateSSL: false
+    validateSSL: false,
+    idleTimeoutSeconds: 30
 }
 
 function loadConfig() {
@@ -60,7 +61,7 @@ function handleOpenConfig() {
             mainWindow.loadURL(config.startUrl)
         } else if (config.startUrl) {
             console.log("Launching main window to", config.startUrl)
-            mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, modifyConfig)
+            mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, getConfig, modifyConfig)
         }
     }, BrowserWindow.getAllWindows()[0])
 }
@@ -148,7 +149,7 @@ app.whenReady().then(() => {
     if (!config || !config.startUrl) {
         handleOpenConfig()
     } else {
-        mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, modifyConfig)
+        mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, getConfig, modifyConfig)
     }
 
     app.on('activate', () => {
@@ -156,7 +157,7 @@ app.whenReady().then(() => {
             if (!config || !config.startUrl) {
                 handleOpenConfig()
             } else {
-                mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, modifyConfig)
+                mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, getConfig, modifyConfig)
             }
         }
     })
@@ -186,4 +187,6 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
 function modifyUserAgent(userAgent) {
     return userAgent.replace(/^(.*\(.*\).*Chrome\/[^ ]+).*$/, '$1');
 }
+
+function getConfig() { return config; }
 
