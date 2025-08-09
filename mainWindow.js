@@ -225,11 +225,14 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     // Place after mainWindow is created
     let idleTimeout = null;
     let lastIdleUrl = null;
+    let idleTimeoutExpiryMs = null;
     function clearIdleTimeout() {
         if (idleTimeout) {
             clearTimeout(idleTimeout);
             idleTimeout = null;
         }
+        idleTimeoutExpiryMs = null;
+        hideIdleOverlay();
     }
     function startIdleTimeout(url) {
         clearIdleTimeout();
@@ -237,12 +240,71 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         if (!config.idleTimeoutSeconds || config.idleTimeoutSeconds <= 0) return;
         lastIdleUrl = url;
         console.log(`[IdleTimeout] Started: ${config.idleTimeoutSeconds}s for URL: ${url}`);
+        idleTimeoutExpiryMs = Date.now() + (config.idleTimeoutSeconds * 1000);
+        showIdleOverlay(idleTimeoutExpiryMs);
         idleTimeout = setTimeout(() => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 console.log('[IdleTimeout] Timeout reached, returning to main page:', getConfig().startUrl);
                 mainWindow.loadURL(getConfig().startUrl);
             }
         }, config.idleTimeoutSeconds * 1000);
+    }
+    function showIdleOverlay(deadlineMs) {
+        const script = `(() => {
+            (function(deadline){
+                try {
+                    const id = 'uplv-idle-overlay';
+                    let el = document.getElementById(id);
+                    if (!el) {
+                        el = document.createElement('div');
+                        el.id = id;
+                        el.style.position = 'fixed';
+                        el.style.right = '12px';
+                        el.style.bottom = '12px';
+                        el.style.zIndex = '2147483647';
+                        el.style.background = 'rgba(0,0,0,0.7)';
+                        el.style.color = '#fff';
+                        el.style.padding = '8px 10px';
+                        el.style.borderRadius = '8px';
+                        el.style.fontFamily = 'Segoe UI, Arial, sans-serif';
+                        el.style.fontSize = '12px';
+                        el.style.lineHeight = '1.2';
+                        el.style.pointerEvents = 'none';
+                        el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+                        el.textContent = 'Returning in …';
+                        document.documentElement.appendChild(el);
+                    }
+                    if (!window.__uplvIdle) window.__uplvIdle = {};
+                    window.__uplvIdle.deadline = deadline;
+                    if (window.__uplvIdle.timer) clearInterval(window.__uplvIdle.timer);
+                    function update() {
+                        const now = Date.now();
+                        const remainMs = Math.max(0, (window.__uplvIdle.deadline || 0) - now);
+                        const secs = Math.ceil(remainMs / 1000);
+                        const text = secs > 0 ? ('Returning in ' + secs + 's') : 'Returning…';
+                        const n = document.getElementById(id);
+                        if (n) n.textContent = text;
+                        if (remainMs <= 0) {
+                            clearInterval(window.__uplvIdle.timer);
+                            window.__uplvIdle.timer = null;
+                        }
+                    }
+                    update();
+                    window.__uplvIdle.timer = setInterval(update, 1000);
+                } catch(e) { /* ignore */ }
+            })(${deadlineMs});
+        })();`;
+        try { mainWindow.webContents.executeJavaScript(script); } catch (_) {}
+    }
+    function hideIdleOverlay() {
+        const script = `(() => {
+            try {
+                if (window.__uplvIdle && window.__uplvIdle.timer) { clearInterval(window.__uplvIdle.timer); window.__uplvIdle.timer = null; }
+                const el = document.getElementById('uplv-idle-overlay');
+                if (el && el.parentNode) el.parentNode.removeChild(el);
+            } catch(_) {}
+        })();`;
+        try { mainWindow.webContents.executeJavaScript(script); } catch (_) {}
     }
     function isIdleExemptUrl(url) {
         try {
@@ -385,6 +447,10 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             })();
         `);
         try { attemptAutoLogin(mainWindow.webContents.getURL()) } catch (e) { console.warn('[AutoLogin] dom-ready error', e) }
+        // Re-show overlay after navigations if timeout is active
+        if (idleTimeoutExpiryMs && idleTimeoutExpiryMs > Date.now()) {
+            try { showIdleOverlay(idleTimeoutExpiryMs); } catch(_) {}
+        }
     });
     mainWindow.webContents.on('console-message', (event, level, message) => {
         if (message === 'reset-idle-timer') {
