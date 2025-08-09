@@ -97,8 +97,8 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     mainWindow.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
         console.log('did-navigate-in-page', event, url, isMainFrame)
         try {
-            if (isDashboardUrl(url)) {
-                console.log('did-navigate-in-page dashboard URL detected');
+            if (isIdleExemptUrl(url)) {
+                console.log('did-navigate-in-page idle-exempt URL detected');
                 clearIdleTimeout();
                 modifyConfig((oldConfig) => {
                     if (oldConfig.startUrl !== url) {
@@ -240,23 +240,24 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             }
         }, config.idleTimeoutSeconds * 1000);
     }
-    function isDashboardUrl(url) {
+    function isIdleExemptUrl(url) {
         try {
             const parsedUrl = new URL(url);
-            return parsedUrl.pathname.startsWith('/protect/dashboard');
+            const pathname = parsedUrl.pathname;
+            return pathname.startsWith('/protect/dashboard') || pathname.startsWith('/login');
         } catch (e) {
             return false;
         }
     }
     mainWindow.webContents.on('did-navigate', (event, url, httpResponseCode, httpStatusText) => {
-        if (!isDashboardUrl(url)) {
+        if (!isIdleExemptUrl(url)) {
             startIdleTimeout(url);
         } else {
             clearIdleTimeout();
         }
     });
     mainWindow.webContents.on('will-navigate', (event, url) => {
-        if (!isDashboardUrl(url)) {
+        if (!isIdleExemptUrl(url)) {
             startIdleTimeout(url);
         } else {
             clearIdleTimeout();
@@ -278,7 +279,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     mainWindow.webContents.on('console-message', (event, level, message) => {
         if (message === 'reset-idle-timer') {
             clearIdleTimeout();
-            if (lastIdleUrl && !isDashboardUrl(lastIdleUrl)) {
+            if (lastIdleUrl && !isIdleExemptUrl(lastIdleUrl)) {
                 startIdleTimeout(lastIdleUrl);
             }
         }
@@ -286,7 +287,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     mainWindow.webContents.on('ipc-message', (event, channel) => {
         if (channel === 'reset-idle-timer') {
             clearIdleTimeout();
-            if (lastIdleUrl && !isDashboardUrl(lastIdleUrl)) {
+            if (lastIdleUrl && !isIdleExemptUrl(lastIdleUrl)) {
                 startIdleTimeout(lastIdleUrl);
             }
         }
