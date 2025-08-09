@@ -1,4 +1,4 @@
-const { BrowserWindow, screen } = require('electron')
+const { BrowserWindow, screen, safeStorage } = require('electron')
 
 function getWindowState(mainWindow) {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -93,6 +93,8 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     })
     mainWindow.webContents.on('did-navigate', (event, url, httpResponseCode, httpStatusText) => {
         console.log('did-navigate', event, url, httpResponseCode, httpStatusText)
+        // Try auto-login on navigation
+        try { attemptAutoLogin(url) } catch (e) { console.warn('[AutoLogin] did-navigate error', e) }
     })
     mainWindow.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
         console.log('did-navigate-in-page', event, url, isMainFrame)
@@ -110,6 +112,8 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             } else {
                 startIdleTimeout(url);
             }
+            // Try auto-login on in-page navigation
+            try { attemptAutoLogin(url) } catch (e) { console.warn('[AutoLogin] did-navigate-in-page error', e) }
         } catch (e) {
             console.log("did-navigate-in-page error", e);
         }
@@ -249,6 +253,106 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             return false;
         }
     }
+
+    function isLoginPath(url) {
+        try {
+            const parsed = new URL(url);
+            return parsed.pathname.startsWith('/login');
+        } catch (e) { return false }
+    }
+
+    function isSameHost(urlA, urlB) {
+        try {
+            const a = new URL(urlA);
+            const b = new URL(urlB);
+            const portA = a.port || (a.protocol === 'https:' ? '443' : '80');
+            const portB = b.port || (b.protocol === 'https:' ? '443' : '80');
+            return (a.hostname.toLowerCase() === b.hostname.toLowerCase()) && (portA === portB);
+        } catch (e) { return false }
+    }
+
+    let lastAutoLoginUrl = null;
+    let lastAutoLoginTimestamp = 0;
+    function attemptAutoLogin(navigateUrl) {
+        try {
+            if (!isLoginPath(navigateUrl)) return;
+            const cfg = getConfig();
+            if (!cfg || !cfg.startUrl) return;
+            if (!isSameHost(navigateUrl, cfg.startUrl)) return;
+            if (!cfg.username || !cfg.passwordEnc) return;
+            if (!safeStorage.isEncryptionAvailable()) return;
+
+            if (lastAutoLoginUrl === navigateUrl && Date.now() - lastAutoLoginTimestamp < 5000) return;
+            lastAutoLoginUrl = navigateUrl;
+            lastAutoLoginTimestamp = Date.now();
+
+            let passwordPlain = '';
+            try {
+                passwordPlain = safeStorage.decryptString(Buffer.from(cfg.passwordEnc, 'base64'));
+            } catch (e) {
+                console.warn('[AutoLogin] Decrypt failed', e);
+                return;
+            }
+
+            const usernameJson = JSON.stringify(cfg.username);
+            const passwordJson = JSON.stringify(passwordPlain);
+            const script = `(() => {
+                const username = ${usernameJson};
+                const password = ${passwordJson};
+                function setValue(el, val) {
+                    if (!el) return;
+                    try {
+                        const d = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+                        d && d.set && d.set.call(el, val);
+                    } catch (_) { el.value = val; }
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                function findInputs() {
+                    const pass = document.querySelector('input[type="password"]');
+                    if (!pass) return null;
+                    let user = document.querySelector('input[name*="user" i], input[name*="email" i], input[type="email"], input[type="text"]');
+                    if (user === pass) {
+                        const cands = Array.from(document.querySelectorAll('input[type="text"], input[type="email"]')).filter(i => i !== pass);
+                        user = cands[0] || null;
+                    }
+                    return { user, pass };
+                }
+                function findSubmit(form) {
+                    const scope = form || document;
+                    let btn = scope.querySelector('button[type="submit"], input[type="submit"]');
+                    if (!btn) btn = scope.querySelector('button');
+                    return btn;
+                }
+                function tryFill() {
+                    const found = findInputs();
+                    if (!found) return false;
+                    const { user, pass } = found;
+                    if (user) setValue(user, username);
+                    if (pass) setValue(pass, password);
+                    const form = (pass && pass.form) || (user && user.form) || document.querySelector('form');
+                    const btn = findSubmit(form);
+                    if (btn) btn.click();
+                    else if (form) form.submit();
+                    return true;
+                }
+                return new Promise((resolve) => {
+                    const start = Date.now();
+                    (function loop() {
+                        if (tryFill()) { console.log('[AutoLogin] Filled and submitted'); resolve(true); return; }
+                        if (Date.now() - start > 10000) { console.warn('[AutoLogin] Timed out waiting for login form'); resolve(false); return; }
+                        requestAnimationFrame(loop);
+                    })();
+                });
+            })();`;
+
+            mainWindow.webContents.executeJavaScript(script).catch((e) => {
+                console.warn('[AutoLogin] Injection error', e);
+            });
+        } catch (e) {
+            console.warn('[AutoLogin] attempt error', e);
+        }
+    }
     mainWindow.webContents.on('did-navigate', (event, url, httpResponseCode, httpStatusText) => {
         if (!isIdleExemptUrl(url)) {
             startIdleTimeout(url);
@@ -275,6 +379,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
                 window.addEventListener('keydown', resetIdle);
             })();
         `);
+        try { attemptAutoLogin(mainWindow.webContents.getURL()) } catch (e) { console.warn('[AutoLogin] dom-ready error', e) }
     });
     mainWindow.webContents.on('console-message', (event, level, message) => {
         if (message === 'reset-idle-timer') {
