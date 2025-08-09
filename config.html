@@ -11,7 +11,7 @@
         label { display: block; font-size: 0.98rem; font-weight: 500; margin-bottom: 6px; }
         .url-row { display: flex; align-items: center; gap: 6px; width: 100%; }
         select { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 1rem; background: #f9fafb; transition: border 0.2s; flex: 1 1 0; min-width: 0; max-width: 90px; }
-        input[type="text"] { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 1rem; background: #f9fafb; transition: border 0.2s; min-width: 0; }
+        input[type="text"], input[type="password"], input[type="number"] { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 1rem; background: #f9fafb; transition: border 0.2s; min-width: 0; }
         #hostname { flex: 1 1 0; }
         #path { flex: 2 1 0; }
         select:focus, input[type="text"]:focus { border: 1.5px solid #2684ff; outline: none; background: #fff; }
@@ -56,6 +56,15 @@
                     <label for="validateSSL" style="margin: 0;">Require Valid SSL Certificate</label>
                 </div>
                 <div class="form-group" style="margin-top: 18px;">
+                    <label for="username" style="text-align: left;">Username</label>
+                    <input type="text" id="username" placeholder="username" autocomplete="username" style="width: 100%;" />
+                </div>
+                <div class="form-group" style="margin-top: 12px;">
+                    <label for="password" style="text-align: left;">Password</label>
+                    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" style="width: 100%;" />
+                    <div style="font-size: 0.9em; color: #666; margin-top: 4px;">Saved passwords are not displayed. Enter a new password to replace the saved one, or leave blank to keep the existing password.</div>
+                </div>
+                <div class="form-group" style="margin-top: 18px;">
                     <label for="idleTimeoutSeconds" style="text-align: left;">Idle timeout (seconds)</label>
                     <input type="number" id="idleTimeoutSeconds" min="0" step="1" style="width: 120px; margin-right: 12px;" />
                     <div style="font-size: 0.95em; color: #555; margin-top: 4px;">
@@ -91,6 +100,7 @@
             document.getElementById('path').value = initial.path || (config.startUrl ? '' : 'protect/dashboard');
             document.getElementById('validateSSL').checked = !!config.validateSSL;
             document.getElementById('idleTimeoutSeconds').value = config.idleTimeoutSeconds || 30;
+            document.getElementById('username').value = config.username || '';
 
             document.getElementById('configForm').onsubmit = function(e) {
                 e.preventDefault();
@@ -99,7 +109,9 @@
                     hostname: document.getElementById('hostname').value.trim(),
                     path: document.getElementById('path').value.trim(),
                     validateSSL: document.getElementById('validateSSL').checked,
-                    idleTimeoutSeconds: document.getElementById('idleTimeoutSeconds').value
+                    idleTimeoutSeconds: document.getElementById('idleTimeoutSeconds').value,
+                    username: document.getElementById('username').value.trim(),
+                    password: document.getElementById('password').value
                 });
             };
             function handlePaste(e) {

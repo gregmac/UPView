@@ -1,4 +1,4 @@
-const { BrowserWindow, screen } = require('electron')
+const { BrowserWindow, screen, safeStorage } = require('electron')
 
 function getWindowState(mainWindow) {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -93,12 +93,14 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     })
     mainWindow.webContents.on('did-navigate', (event, url, httpResponseCode, httpStatusText) => {
         console.log('did-navigate', event, url, httpResponseCode, httpStatusText)
+        // Try auto-login on navigation
+        try { attemptAutoLogin(url) } catch (e) { console.warn('[AutoLogin] did-navigate error', e) }
     })
     mainWindow.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
         console.log('did-navigate-in-page', event, url, isMainFrame)
         try {
-            if (isDashboardUrl(url)) {
-                console.log('did-navigate-in-page dashboard URL detected');
+            if (isIdleExemptUrl(url)) {
+                console.log('did-navigate-in-page idle-exempt URL detected');
                 clearIdleTimeout();
                 modifyConfig((oldConfig) => {
                     if (oldConfig.startUrl !== url) {
@@ -110,6 +112,8 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             } else {
                 startIdleTimeout(url);
             }
+            // Try auto-login on in-page navigation
+            try { attemptAutoLogin(url) } catch (e) { console.warn('[AutoLogin] did-navigate-in-page error', e) }
         } catch (e) {
             console.log("did-navigate-in-page error", e);
         }
@@ -220,12 +224,20 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     
     // Place after mainWindow is created
     let idleTimeout = null;
+    let idleResumeTimer = null;
     let lastIdleUrl = null;
+    let idleTimeoutExpiryMs = null;
     function clearIdleTimeout() {
         if (idleTimeout) {
             clearTimeout(idleTimeout);
             idleTimeout = null;
         }
+        if (idleResumeTimer) {
+            clearTimeout(idleResumeTimer);
+            idleResumeTimer = null;
+        }
+        idleTimeoutExpiryMs = null;
+        hideIdleOverlay();
     }
     function startIdleTimeout(url) {
         clearIdleTimeout();
@@ -233,6 +245,8 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         if (!config.idleTimeoutSeconds || config.idleTimeoutSeconds <= 0) return;
         lastIdleUrl = url;
         console.log(`[IdleTimeout] Started: ${config.idleTimeoutSeconds}s for URL: ${url}`);
+        idleTimeoutExpiryMs = Date.now() + (config.idleTimeoutSeconds * 1000);
+        showIdleOverlay(idleTimeoutExpiryMs);
         idleTimeout = setTimeout(() => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 console.log('[IdleTimeout] Timeout reached, returning to main page:', getConfig().startUrl);
@@ -240,23 +254,186 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             }
         }, config.idleTimeoutSeconds * 1000);
     }
-    function isDashboardUrl(url) {
+    function showIdleOverlay(deadlineMs) {
+        const script = `(() => {
+            (function(deadline){
+                try {
+                    const id = 'uplv-idle-overlay';
+                    let el = document.getElementById(id);
+                    if (!el) {
+                        el = document.createElement('div');
+                        el.id = id;
+                        el.style.position = 'fixed';
+                        el.style.right = '12px';
+                        el.style.bottom = '12px';
+                        el.style.zIndex = '2147483647';
+                        el.style.background = 'rgba(0,0,0,0.7)';
+                        el.style.color = '#fff';
+                        el.style.padding = '8px 10px';
+                        el.style.borderRadius = '8px';
+                        el.style.fontFamily = 'Segoe UI, Arial, sans-serif';
+                        el.style.fontSize = '12px';
+                        el.style.lineHeight = '1.2';
+                        el.style.pointerEvents = 'none';
+                        el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+                        el.textContent = 'Returning in …';
+                        document.documentElement.appendChild(el);
+                    }
+                    if (!window.__uplvIdle) window.__uplvIdle = {};
+                    window.__uplvIdle.deadline = deadline;
+                    if (window.__uplvIdle.timer) clearInterval(window.__uplvIdle.timer);
+                    function update() {
+                        const now = Date.now();
+                        const remainMs = Math.max(0, (window.__uplvIdle.deadline || 0) - now);
+                        const secs = Math.ceil(remainMs / 1000);
+                        const text = secs > 0 ? ('Returning in ' + secs + 's') : 'Returning…';
+                        const n = document.getElementById(id);
+                        if (n) n.textContent = text;
+                        if (remainMs <= 0) {
+                            clearInterval(window.__uplvIdle.timer);
+                            window.__uplvIdle.timer = null;
+                        }
+                    }
+                    update();
+                    window.__uplvIdle.timer = setInterval(update, 1000);
+                } catch(e) { /* ignore */ }
+            })(${deadlineMs});
+        })();`;
+        try { mainWindow.webContents.executeJavaScript(script); } catch (_) {}
+    }
+    function hideIdleOverlay() {
+        const script = `(() => {
+            try {
+                if (window.__uplvIdle && window.__uplvIdle.timer) { clearInterval(window.__uplvIdle.timer); window.__uplvIdle.timer = null; }
+                const el = document.getElementById('uplv-idle-overlay');
+                if (el && el.parentNode) el.parentNode.removeChild(el);
+            } catch(_) {}
+        })();`;
+        try { mainWindow.webContents.executeJavaScript(script); } catch (_) {}
+    }
+    function isIdleExemptUrl(url) {
         try {
             const parsedUrl = new URL(url);
-            return parsedUrl.pathname.startsWith('/protect/dashboard');
+            const pathname = parsedUrl.pathname;
+            return pathname.startsWith('/protect/dashboard') || pathname.startsWith('/login');
         } catch (e) {
             return false;
         }
     }
+
+    function isLoginPath(url) {
+        try {
+            const parsed = new URL(url);
+            return parsed.pathname.startsWith('/login');
+        } catch (e) { return false }
+    }
+
+    function isSameHost(urlA, urlB) {
+        try {
+            const a = new URL(urlA);
+            const b = new URL(urlB);
+            const portA = a.port || (a.protocol === 'https:' ? '443' : '80');
+            const portB = b.port || (b.protocol === 'https:' ? '443' : '80');
+            return (a.hostname.toLowerCase() === b.hostname.toLowerCase()) && (portA === portB);
+        } catch (e) { return false }
+    }
+
+    let lastAutoLoginUrl = null;
+    let lastAutoLoginTimestamp = 0;
+    function attemptAutoLogin(navigateUrl) {
+        try {
+            if (!isLoginPath(navigateUrl)) return;
+            const cfg = getConfig();
+            if (!cfg || !cfg.startUrl) return;
+            if (!isSameHost(navigateUrl, cfg.startUrl)) return;
+            if (!cfg.username || !cfg.passwordEnc) return;
+            if (!safeStorage.isEncryptionAvailable()) return;
+
+            if (lastAutoLoginUrl === navigateUrl && Date.now() - lastAutoLoginTimestamp < 5000) return;
+            lastAutoLoginUrl = navigateUrl;
+            lastAutoLoginTimestamp = Date.now();
+
+            let passwordPlain = '';
+            try {
+                passwordPlain = safeStorage.decryptString(Buffer.from(cfg.passwordEnc, 'base64'));
+            } catch (e) {
+                console.warn('[AutoLogin] Decrypt failed', e);
+                return;
+            }
+
+            const usernameJson = JSON.stringify(cfg.username);
+            const passwordJson = JSON.stringify(passwordPlain);
+            const script = `(() => {
+                const username = ${usernameJson};
+                const password = ${passwordJson};
+                function setValue(el, val) {
+                    if (!el) return;
+                    try {
+                        const d = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+                        d && d.set && d.set.call(el, val);
+                    } catch (_) { el.value = val; }
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                function findInputs() {
+                    const pass = document.querySelector('input[type="password"]');
+                    if (!pass) return null;
+                    let user = document.querySelector('input[name*="user" i], input[name*="email" i], input[type="email"], input[type="text"]');
+                    if (user === pass) {
+                        const cands = Array.from(document.querySelectorAll('input[type="text"], input[type="email"]')).filter(i => i !== pass);
+                        user = cands[0] || null;
+                    }
+                    return { user, pass };
+                }
+                function findSubmit(form) {
+                    const scope = form || document;
+                    let btn = scope.querySelector('button[type="submit"], input[type="submit"]');
+                    if (!btn) btn = scope.querySelector('button');
+                    return btn;
+                }
+                function tryFill() {
+                    const found = findInputs();
+                    if (!found) return false;
+                    const { user, pass } = found;
+                    if (user) setValue(user, username);
+                    if (pass) setValue(pass, password);
+                    // Ensure "Remember my credentials" is checked if present
+                    const remember = document.querySelector('input#rememberMe, input[name="rememberMe"], input[data-id="rememberMe"], [role="checkbox"]#rememberMe, [role="checkbox"][name="rememberMe"], [role="checkbox"][data-id="rememberMe"]');
+                    if (remember && !remember.checked) {
+                        try { remember.click(); } catch(_) {}
+                    }
+                    const form = (pass && pass.form) || (user && user.form) || document.querySelector('form');
+                    const btn = findSubmit(form);
+                    if (btn) btn.click();
+                    else if (form) form.submit();
+                    return true;
+                }
+                return new Promise((resolve) => {
+                    const start = Date.now();
+                    (function loop() {
+                        if (tryFill()) { console.log('[AutoLogin] Filled and submitted'); resolve(true); return; }
+                        if (Date.now() - start > 10000) { console.warn('[AutoLogin] Timed out waiting for login form'); resolve(false); return; }
+                        requestAnimationFrame(loop);
+                    })();
+                });
+            })();`;
+
+            mainWindow.webContents.executeJavaScript(script).catch((e) => {
+                console.warn('[AutoLogin] Injection error', e);
+            });
+        } catch (e) {
+            console.warn('[AutoLogin] attempt error', e);
+        }
+    }
     mainWindow.webContents.on('did-navigate', (event, url, httpResponseCode, httpStatusText) => {
-        if (!isDashboardUrl(url)) {
+        if (!isIdleExemptUrl(url)) {
             startIdleTimeout(url);
         } else {
             clearIdleTimeout();
         }
     });
     mainWindow.webContents.on('will-navigate', (event, url) => {
-        if (!isDashboardUrl(url)) {
+        if (!isIdleExemptUrl(url)) {
             startIdleTimeout(url);
         } else {
             clearIdleTimeout();
@@ -267,28 +444,45 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             (function() {
                 let lastActivity = Date.now();
                 function resetIdle() {
-                    window.postMessage('reset-idle-timer', '*');
+                    console.log('reset-idle-timer');
                 }
                 window.addEventListener('mousemove', resetIdle);
                 window.addEventListener('mousedown', resetIdle);
                 window.addEventListener('keydown', resetIdle);
             })();
         `);
+        try { attemptAutoLogin(mainWindow.webContents.getURL()) } catch (e) { console.warn('[AutoLogin] dom-ready error', e) }
+        // Re-show overlay after navigations if timeout is active
+        if (idleTimeoutExpiryMs && idleTimeoutExpiryMs > Date.now()) {
+            try { showIdleOverlay(idleTimeoutExpiryMs); } catch(_) {}
+        }
     });
     mainWindow.webContents.on('console-message', (event, level, message) => {
         if (message === 'reset-idle-timer') {
             clearIdleTimeout();
-            if (lastIdleUrl && !isDashboardUrl(lastIdleUrl)) {
-                startIdleTimeout(lastIdleUrl);
-            }
+            if (idleResumeTimer) clearTimeout(idleResumeTimer);
+            idleResumeTimer = setTimeout(() => {
+                try {
+                    const currentUrl = mainWindow.webContents.getURL();
+                    if (!isIdleExemptUrl(currentUrl)) {
+                        startIdleTimeout(currentUrl);
+                    }
+                } catch(_) {}
+            }, 1000);
         }
     });
     mainWindow.webContents.on('ipc-message', (event, channel) => {
         if (channel === 'reset-idle-timer') {
             clearIdleTimeout();
-            if (lastIdleUrl && !isDashboardUrl(lastIdleUrl)) {
-                startIdleTimeout(lastIdleUrl);
-            }
+            if (idleResumeTimer) clearTimeout(idleResumeTimer);
+            idleResumeTimer = setTimeout(() => {
+                try {
+                    const currentUrl = mainWindow.webContents.getURL();
+                    if (!isIdleExemptUrl(currentUrl)) {
+                        startIdleTimeout(currentUrl);
+                    }
+                } catch(_) {}
+            }, 1000);
         }
     });
     
