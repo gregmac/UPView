@@ -224,12 +224,17 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     
     // Place after mainWindow is created
     let idleTimeout = null;
+    let idleResumeTimer = null;
     let lastIdleUrl = null;
     let idleTimeoutExpiryMs = null;
     function clearIdleTimeout() {
         if (idleTimeout) {
             clearTimeout(idleTimeout);
             idleTimeout = null;
+        }
+        if (idleResumeTimer) {
+            clearTimeout(idleResumeTimer);
+            idleResumeTimer = null;
         }
         idleTimeoutExpiryMs = null;
         hideIdleOverlay();
@@ -439,7 +444,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             (function() {
                 let lastActivity = Date.now();
                 function resetIdle() {
-                    window.postMessage('reset-idle-timer', '*');
+                    console.log('reset-idle-timer');
                 }
                 window.addEventListener('mousemove', resetIdle);
                 window.addEventListener('mousedown', resetIdle);
@@ -455,17 +460,29 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     mainWindow.webContents.on('console-message', (event, level, message) => {
         if (message === 'reset-idle-timer') {
             clearIdleTimeout();
-            if (lastIdleUrl && !isIdleExemptUrl(lastIdleUrl)) {
-                startIdleTimeout(lastIdleUrl);
-            }
+            if (idleResumeTimer) clearTimeout(idleResumeTimer);
+            idleResumeTimer = setTimeout(() => {
+                try {
+                    const currentUrl = mainWindow.webContents.getURL();
+                    if (!isIdleExemptUrl(currentUrl)) {
+                        startIdleTimeout(currentUrl);
+                    }
+                } catch(_) {}
+            }, 1000);
         }
     });
     mainWindow.webContents.on('ipc-message', (event, channel) => {
         if (channel === 'reset-idle-timer') {
             clearIdleTimeout();
-            if (lastIdleUrl && !isIdleExemptUrl(lastIdleUrl)) {
-                startIdleTimeout(lastIdleUrl);
-            }
+            if (idleResumeTimer) clearTimeout(idleResumeTimer);
+            idleResumeTimer = setTimeout(() => {
+                try {
+                    const currentUrl = mainWindow.webContents.getURL();
+                    if (!isIdleExemptUrl(currentUrl)) {
+                        startIdleTimeout(currentUrl);
+                    }
+                } catch(_) {}
+            }, 1000);
         }
     });
     
