@@ -330,6 +330,11 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
                     const { user, pass } = found;
                     if (user) setValue(user, username);
                     if (pass) setValue(pass, password);
+                    // Ensure "Remember my credentials" is checked if present
+                    const remember = document.querySelector('input#rememberMe, input[name="rememberMe"], input[data-id="rememberMe"], [role="checkbox"]#rememberMe, [role="checkbox"][name="rememberMe"], [role="checkbox"][data-id="rememberMe"]');
+                    if (remember && !remember.checked) {
+                        try { remember.click(); } catch(_) {}
+                    }
                     const form = (pass && pass.form) || (user && user.form) || document.querySelector('form');
                     const btn = findSubmit(form);
                     if (btn) btn.click();
