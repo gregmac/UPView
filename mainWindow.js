@@ -98,25 +98,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     })
     mainWindow.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
         console.log('did-navigate-in-page', event, url, isMainFrame)
-        try {
-            if (isIdleExemptUrl(url)) {
-                console.log('did-navigate-in-page idle-exempt URL detected');
-                clearIdleTimeout();
-                modifyConfig((oldConfig) => {
-                    if (oldConfig.startUrl !== url) {
-                        console.log('Updated config.startUrl to', url)
-                        return { ...oldConfig, startUrl: url }
-                    }
-                    return oldConfig
-                })
-            } else {
-                startIdleTimeout(url);
-            }
-            // Try auto-login on in-page navigation
-            try { attemptAutoLogin(url) } catch (e) { console.warn('[AutoLogin] did-navigate-in-page error', e) }
-        } catch (e) {
-            console.log("did-navigate-in-page error", e);
-        }
+        handleNavigation(url);
     })
     
     mainWindow.webContents.on('render-process-gone', () => {
@@ -222,12 +204,73 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         mainWindow.webContents.on('devtools-closed', saveState)
     }
     
-    // Place after mainWindow is created
+    // ===== IDLE TIMEOUT MANAGEMENT =====
     let idleTimeout = null;
     let idleResumeTimer = null;
     let lastIdleUrl = null;
     let isEnlargedView = false;
     let idleTimeoutExpiryMs = null;
+    
+    // Shared function to handle idle timer reset with debouncing
+    function resetIdleTimer() {
+        clearIdleTimeout();
+        if (idleResumeTimer) clearTimeout(idleResumeTimer);
+        idleResumeTimer = setTimeout(() => {
+            try {
+                const currentUrl = mainWindow.webContents.getURL();
+                // Start timer if not on exempt URL, OR if we're in an enlarged view (even on dashboard)
+                if (!isIdleExemptUrl(currentUrl) || isEnlargedView) {
+                    startIdleTimeout(currentUrl);
+                }
+            } catch(_) {}
+        }, 1000);
+    }
+    
+    // Shared function to handle navigation events
+    function handleNavigation(url) {
+        try {
+            if (isIdleExemptUrl(url)) {
+                console.log('Navigation to idle-exempt URL detected');
+                clearIdleTimeout();
+                updateStartUrl(url);
+            } else {
+                startIdleTimeout(url);
+            }
+            // Try auto-login on navigation
+            try { attemptAutoLogin(url); } catch (e) { console.warn('[AutoLogin] navigation error', e); }
+        } catch (e) {
+            console.log("Navigation handling error", e);
+        }
+    }
+    
+    // Helper function to update startUrl in config
+    function updateStartUrl(url) {
+        modifyConfig((oldConfig) => {
+            if (oldConfig.startUrl !== url) {
+                console.log('Updated config.startUrl to', url);
+                return { ...oldConfig, startUrl: url };
+            }
+            return oldConfig;
+        });
+    }
+    
+    // Shared function to handle enlarged view state changes
+    function handleEnlargedViewChange(isEnlarged) {
+        isEnlargedView = isEnlarged;
+        try {
+            const currentUrl = mainWindow.webContents.getURL();
+            if (isEnlarged) {
+                // Start timer even on dashboard when enlarged
+                startIdleTimeout(currentUrl);
+            } else {
+                // If on exempt URL (dashboard/login), clear the timer when shrink back
+                if (isIdleExemptUrl(currentUrl)) {
+                    clearIdleTimeout();
+                }
+            }
+        } catch(_) {}
+    }
+    
     function clearIdleTimeout() {
         if (idleTimeout) {
             clearTimeout(idleTimeout);
@@ -240,6 +283,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         idleTimeoutExpiryMs = null;
         hideIdleOverlay();
     }
+    
     function startIdleTimeout(url) {
         clearIdleTimeout();
         const config = getConfig();
@@ -261,6 +305,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             }
         }, config.idleTimeoutSeconds * 1000);
     }
+    // ===== OVERLAY MANAGEMENT =====
     function showIdleOverlay(deadlineMs) {
         const script = `(() => {
             (function(deadline){
@@ -308,6 +353,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         })();`;
         try { mainWindow.webContents.executeJavaScript(script); } catch (_) {}
     }
+    
     function hideIdleOverlay() {
         const script = `(() => {
             try {
@@ -348,6 +394,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             });
         } catch (_) {}
     }
+    // ===== URL UTILITY FUNCTIONS =====
     function isIdleExemptUrl(url) {
         try {
             const parsedUrl = new URL(url);
@@ -375,8 +422,10 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         } catch (e) { return false }
     }
 
+    // ===== AUTO-LOGIN MANAGEMENT =====
     let lastAutoLoginUrl = null;
     let lastAutoLoginTimestamp = 0;
+    
     function attemptAutoLogin(navigateUrl) {
         try {
             if (!isLoginPath(navigateUrl)) return;
@@ -386,6 +435,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             if (!cfg.username || !cfg.passwordEnc) return;
             if (!safeStorage.isEncryptionAvailable()) return;
 
+            // Prevent repeated attempts on the same URL
             if (lastAutoLoginUrl === navigateUrl && Date.now() - lastAutoLoginTimestamp < 5000) return;
             lastAutoLoginUrl = navigateUrl;
             lastAutoLoginTimestamp = Date.now();
@@ -462,21 +512,19 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             console.warn('[AutoLogin] attempt error', e);
         }
     }
+    // ===== EVENT HANDLERS =====
+    
+    // Navigation events
     mainWindow.webContents.on('did-navigate', (event, url, httpResponseCode, httpStatusText) => {
-        if (!isIdleExemptUrl(url)) {
-            startIdleTimeout(url);
-        } else {
-            clearIdleTimeout();
-        }
+        handleNavigation(url);
     });
     mainWindow.webContents.on('will-navigate', (event, url) => {
-        if (!isIdleExemptUrl(url)) {
-            startIdleTimeout(url);
-        } else {
-            clearIdleTimeout();
-        }
+        handleNavigation(url);
     });
+    
+    // DOM ready - initialize idle tracking and enlarge detection
     mainWindow.webContents.on('dom-ready', () => {
+        // Initialize idle activity tracking
         mainWindow.webContents.executeJavaScript(`
             (function() {
                 let lastActivity = Date.now();
@@ -488,7 +536,8 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
                 window.addEventListener('keydown', resetIdle);
             })();
         `);
-        // Watch for enlarge/shrink by observing style/class mutations on live-view containers
+        
+        // Initialize enlarge detection
         mainWindow.webContents.executeJavaScript(`
             (function() {
                 if (window.__uplvEnlargeWatchInstalled) return; 
@@ -597,60 +646,34 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
                 setState(detect());
             })();
         `);
+        
+        // Try auto-login and restore overlay if needed
         try { attemptAutoLogin(mainWindow.webContents.getURL()) } catch (e) { console.warn('[AutoLogin] dom-ready error', e) }
-        // Re-show overlay after navigations if timeout is active
         if (idleTimeoutExpiryMs && idleTimeoutExpiryMs > Date.now()) {
             try { showIdleOverlay(idleTimeoutExpiryMs); } catch(_) {}
         }
     });
+    
+    // Console message handling
     mainWindow.webContents.on('console-message', (event, level, message) => {
         if (message === 'reset-idle-timer') {
-            clearIdleTimeout();
-            if (idleResumeTimer) clearTimeout(idleResumeTimer);
-            idleResumeTimer = setTimeout(() => {
-                try {
-                    const currentUrl = mainWindow.webContents.getURL();
-                    // Start timer if not on exempt URL, OR if we're in an enlarged view (even on dashboard)
-                    if (!isIdleExemptUrl(currentUrl) || isEnlargedView) {
-                        startIdleTimeout(currentUrl);
-                    }
-                } catch(_) {}
-            }, 1000);
+            resetIdleTimer();
         } else if (message === 'uplv-enlarged-on') {
-            isEnlargedView = true;
-            try {
-                const currentUrl = mainWindow.webContents.getURL();
-                // Start timer even on dashboard when enlarged
-                startIdleTimeout(currentUrl);
-            } catch(_) {}
+            handleEnlargedViewChange(true);
         } else if (message === 'uplv-enlarged-off') {
-            isEnlargedView = false;
-            // If on exempt URL (dashboard/login), clear the timer when shrink back
-            try {
-                const currentUrl = mainWindow.webContents.getURL();
-                if (isIdleExemptUrl(currentUrl)) {
-                    clearIdleTimeout();
-                }
-            } catch(_) {}
-        }
-    });
-    mainWindow.webContents.on('ipc-message', (event, channel) => {
-        if (channel === 'reset-idle-timer') {
-            clearIdleTimeout();
-            if (idleResumeTimer) clearTimeout(idleResumeTimer);
-            idleResumeTimer = setTimeout(() => {
-                try {
-                    const currentUrl = mainWindow.webContents.getURL();
-                    // Start timer if not on exempt URL, OR if we're in an enlarged view (even on dashboard)
-                    if (!isIdleExemptUrl(currentUrl) || isEnlargedView) {
-                        startIdleTimeout(currentUrl);
-                    }
-                } catch(_) {}
-            }, 1000);
+            handleEnlargedViewChange(false);
         }
     });
     
-    return mainWindow
+    // IPC message handling
+    mainWindow.webContents.on('ipc-message', (event, channel) => {
+        if (channel === 'reset-idle-timer') {
+            resetIdleTimer();
+        }
+    });
+    
+    // ===== RETURN =====
+    return mainWindow;
 }
 
 module.exports = { launchMainWindow, getWindowState } 
