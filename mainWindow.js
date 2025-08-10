@@ -250,8 +250,14 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         showIdleOverlay(idleTimeoutExpiryMs);
         idleTimeout = setTimeout(() => {
             if (mainWindow && !mainWindow.isDestroyed()) {
-                console.log('[IdleTimeout] Timeout reached, returning to main page:', getConfig().startUrl);
-                mainWindow.loadURL(getConfig().startUrl);
+                const currentUrl = mainWindow.webContents.getURL();
+                if (isEnlargedView && isIdleExemptUrl(currentUrl)) {
+                    console.log('[IdleTimeout] Timeout reached while enlarged on dashboard, exiting enlarged view');
+                    exitEnlargedView();
+                } else {
+                    console.log('[IdleTimeout] Timeout reached, returning to main page:', getConfig().startUrl);
+                    mainWindow.loadURL(getConfig().startUrl);
+                }
             }
         }, config.idleTimeoutSeconds * 1000);
     }
@@ -311,6 +317,36 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             } catch(_) {}
         })();`;
         try { mainWindow.webContents.executeJavaScript(script); } catch (_) {}
+    }
+    
+    function exitEnlargedView() {
+        const script = `(() => {
+            try {
+                // Find the enlarged viewport element
+                const enlargedElement = document.querySelector('div[style*="position: absolute"][style*="inset: 0px"][style*="width: 100%"][style*="height: 100%"]');
+                if (enlargedElement) {
+                    // Look for video elements within the enlarged viewport
+                    const videos = enlargedElement.querySelectorAll('video');
+                    if (videos.length > 0) {
+                        console.log('[ExitEnlarged] Clicking video to exit enlarged view');
+                        videos[0].click();
+                        return true;
+                    }
+                }
+                console.log('[ExitEnlarged] No enlarged view found to exit');
+                return false;
+            } catch(e) {
+                console.log('[ExitEnlarged] Error:', e);
+                return false;
+            }
+        })();`;
+        try { 
+            mainWindow.webContents.executeJavaScript(script).then((result) => {
+                if (result) {
+                    console.log('[ExitEnlarged] Successfully exited enlarged view');
+                }
+            });
+        } catch (_) {}
     }
     function isIdleExemptUrl(url) {
         try {
