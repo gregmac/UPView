@@ -610,7 +610,8 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             idleResumeTimer = setTimeout(() => {
                 try {
                     const currentUrl = mainWindow.webContents.getURL();
-                    if (!isIdleExemptUrl(currentUrl)) {
+                    // Start timer if not on exempt URL, OR if we're in an enlarged view (even on dashboard)
+                    if (!isIdleExemptUrl(currentUrl) || isEnlargedView) {
                         startIdleTimeout(currentUrl);
                     }
                 } catch(_) {}
@@ -640,7 +641,8 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             idleResumeTimer = setTimeout(() => {
                 try {
                     const currentUrl = mainWindow.webContents.getURL();
-                    if (!isIdleExemptUrl(currentUrl)) {
+                    // Start timer if not on exempt URL, OR if we're in an enlarged view (even on dashboard)
+                    if (!isIdleExemptUrl(currentUrl) || isEnlargedView) {
                         startIdleTimeout(currentUrl);
                     }
                 } catch(_) {}
