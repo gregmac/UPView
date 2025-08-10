@@ -226,6 +226,7 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     let idleTimeout = null;
     let idleResumeTimer = null;
     let lastIdleUrl = null;
+    let isEnlargedView = false;
     let idleTimeoutExpiryMs = null;
     function clearIdleTimeout() {
         if (idleTimeout) {
@@ -451,6 +452,115 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
                 window.addEventListener('keydown', resetIdle);
             })();
         `);
+        // Watch for enlarge/shrink by observing style/class mutations on live-view containers
+        mainWindow.webContents.executeJavaScript(`
+            (function() {
+                if (window.__uplvEnlargeWatchInstalled) return; 
+                window.__uplvEnlargeWatchInstalled = true;
+                
+                function isCandidate(el) {
+                    if (!el || !el.className) return false;
+                    const s = el.className.toString();
+                    return /ZoomableViewport|liveview__Viewport|ViewportLiveStreamPlayer|LiveStreamPlayerClickCaptureOverlay/i.test(s);
+                }
+                
+                function hasEnlargedStyle(el) {
+                    if (!el) return false;
+                    
+                    // Check inline style first
+                    const styleAttr = (el.getAttribute && el.getAttribute('style')) || '';
+                    if (styleAttr) {
+                        const hasPosition = /position\\s*:\\s*absolute/i.test(styleAttr);
+                        const hasInset = /inset\\s*:\\s*0(px)?/i.test(styleAttr);
+                        const hasFullSize = /width\\s*:\\s*100%/i.test(styleAttr) && /height\\s*:\\s*100%/i.test(styleAttr);
+                        
+                        if (hasPosition && hasInset && hasFullSize) {
+                            console.log('[EnlargeWatch] Found enlarged element:', el.className, styleAttr);
+                            return true;
+                        }
+                    }
+                    
+                    // Fallback to computed style
+                    try {
+                        const cs = getComputedStyle(el);
+                        const pos = cs.position;
+                        const width = cs.width;
+                        const height = cs.height;
+                        
+                        if (pos === 'absolute' && width === '100%' && height === '100%') {
+                            console.log('[EnlargeWatch] Found enlarged element (computed):', el.className, pos, width, height);
+                            return true;
+                        }
+                    } catch(e) {
+                        console.log('[EnlargeWatch] Error checking computed style:', e);
+                    }
+                    
+                    return false;
+                }
+                
+                function detect() {
+                    const nodes = Array.from(document.querySelectorAll('div'));
+                    let found = false;
+                    
+                    for (const el of nodes) {
+                        if (!isCandidate(el)) continue;
+                        if (hasEnlargedStyle(el)) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    
+                    if (document.fullscreenElement) {
+                        console.log('[EnlargeWatch] Fullscreen element found');
+                        found = true;
+                    }
+                    
+                    console.log('[EnlargeWatch] Detection result:', found);
+                    return found;
+                }
+                
+                function setState(on) {
+                    if (!window.__uplvEnlargedState || window.__uplvEnlargedState !== !!on) {
+                        window.__uplvEnlargedState = !!on;
+                        console.log(on ? 'uplv-enlarged-on' : 'uplv-enlarged-off');
+                    }
+                }
+                
+                const observer = new MutationObserver((muts) => {
+                    let relevant = false;
+                    for (const m of muts) {
+                        if (m.type === 'attributes' && (m.attributeName === 'style' || m.attributeName === 'class')) {
+                            const t = m.target;
+                            if (t && t.nodeType === 1 && isCandidate(t)) {
+                                console.log('[EnlargeWatch] Relevant mutation:', m.attributeName, t.className);
+                                relevant = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (relevant) {
+                        console.log('[EnlargeWatch] Checking state after mutation');
+                        setState(detect());
+                    }
+                });
+                
+                observer.observe(document.documentElement, { 
+                    subtree: true, 
+                    childList: true, 
+                    attributes: true, 
+                    attributeFilter: ['style','class'] 
+                });
+                
+                window.addEventListener('fullscreenchange', () => {
+                    console.log('[EnlargeWatch] Fullscreen change event');
+                    setState(detect());
+                }, true);
+                
+                // Initial detection
+                console.log('[EnlargeWatch] Initial detection');
+                setState(detect());
+            })();
+        `);
         try { attemptAutoLogin(mainWindow.webContents.getURL()) } catch (e) { console.warn('[AutoLogin] dom-ready error', e) }
         // Re-show overlay after navigations if timeout is active
         if (idleTimeoutExpiryMs && idleTimeoutExpiryMs > Date.now()) {
@@ -469,6 +579,22 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
                     }
                 } catch(_) {}
             }, 1000);
+        } else if (message === 'uplv-enlarged-on') {
+            isEnlargedView = true;
+            try {
+                const currentUrl = mainWindow.webContents.getURL();
+                // Start timer even on dashboard when enlarged
+                startIdleTimeout(currentUrl);
+            } catch(_) {}
+        } else if (message === 'uplv-enlarged-off') {
+            isEnlargedView = false;
+            // If on exempt URL (dashboard/login), clear the timer when shrink back
+            try {
+                const currentUrl = mainWindow.webContents.getURL();
+                if (isIdleExemptUrl(currentUrl)) {
+                    clearIdleTimeout();
+                }
+            } catch(_) {}
         }
     });
     mainWindow.webContents.on('ipc-message', (event, channel) => {
