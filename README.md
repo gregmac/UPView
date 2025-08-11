@@ -12,36 +12,16 @@ A dedicated desktop application for viewing Unifi Protect camera feeds with enha
 - **Smart Navigation**: Automatically returns to the main dashboard view after a configurable idle timeout
 - **Window State Persistence**: Remembers window size, position, and state between sessions
 
+## Getting Started
+
+1. **Download** the latest release for your platform from the [Releases](https://github.com/gregmac/UPView/releases) page
+2. **Install** the application using the provided installer
+3. **Launch** UPView and configure your Unifi Protect instance URL and credentials
+4. **Enjoy** automatic login and smart navigation features
+
 ## Development
 
-### Prerequisites
-- Node.js (version 16 or higher)
-- npm or yarn package manager
-
-### Local Development Setup
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/gregmac/UPView.git
-   cd UPView
-   ```
-
-2. **Install dependencies**
-   ```bash
-   cd src
-   npm install
-   ```
-
-3. **Run the application**
-   ```bash
-   npm start
-   ```
-
-### Development Notes
-- The application runs in development mode with DevTools enabled by default
-- Configuration is stored locally and persists between sessions
-- Use the Configuration menu item to set up your Unifi Protect instance URL and credentials
-- The application automatically handles window positioning and state management
+For development and build instructions, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## License
 
