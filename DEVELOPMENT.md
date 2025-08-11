@@ -91,6 +91,90 @@ The build is configured in `src/package.json` with the following features:
 - **Start Menu Shortcuts**: Enabled for Windows
 - **Cross-platform Support**: Windows, macOS, and Linux targets
 
+## GitHub Actions and Automated Releases
+
+### Automated Build and Release
+
+The project uses GitHub Actions to automatically build and release the application when tags are pushed.
+
+#### Release Workflow
+
+1. **Manual Release** (recommended):
+   ```bash
+   # Create and push a new version tag
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+
+2. **Automatic Versioning** (optional):
+   - Push changes to the `main` branch
+   - The version workflow will automatically:
+     - Bump the patch version
+     - Create a new tag
+     - Trigger the release workflow
+
+#### Release Scripts
+
+For convenience, release scripts are provided:
+
+**Linux/macOS:**
+```bash
+# Patch release (0.1.0 -> 0.1.1)
+./scripts/release.sh patch
+
+# Minor release (0.1.0 -> 0.2.0)
+./scripts/release.sh minor
+
+# Major release (0.1.0 -> 1.0.0)
+./scripts/release.sh major
+```
+
+**Windows:**
+```cmd
+# Patch release (0.1.0 -> 0.1.1)
+scripts\release.bat patch
+
+# Minor release (0.1.0 -> 0.2.0)
+scripts\release.bat minor
+
+# Major release (0.1.0 -> 1.0.0)
+scripts\release.bat major
+```
+
+The scripts will:
+- Check for uncommitted changes
+- Bump the version in `package.json`
+- Create a git tag
+- Push changes and tag to trigger GitHub Actions
+
+#### Workflow Files
+
+- **`.github/workflows/release.yml`**: Builds and releases on tag push
+- **`.github/workflows/version.yml`**: Automatically bumps version on main branch push
+
+#### Release Process
+
+When a tag is pushed (e.g., `v1.0.1`):
+
+1. **Parallel builds** run on Windows, macOS, and Linux
+2. **Electron Builder** creates platform-specific installers
+3. **GitHub Release** is created with all build artifacts
+4. **Artifacts** are uploaded for each platform
+
+#### Version Management
+
+- **Manual**: Use `git tag v1.0.1` for specific versions
+- **Automatic**: Push to main branch for automatic patch version bumps
+- **Semantic Versioning**: Follows MAJOR.MINOR.PATCH format
+
+### Publishing Configuration
+
+The build is configured to publish to GitHub releases:
+- **Provider**: GitHub
+- **Owner**: gregmac
+- **Repo**: UPView
+- **Token**: Uses `GITHUB_TOKEN` (automatically provided)
+
 ## Project Structure
 
 ```
@@ -102,6 +186,13 @@ src/
 ├── preload.js            # Preload script for security
 ├── package.json          # Dependencies and build configuration
 └── dist/                 # Build output directory (gitignored)
+scripts/
+├── release.sh            # Release script for Linux/macOS
+└── release.bat           # Release script for Windows
+.github/
+└── workflows/
+    ├── release.yml       # Build and release workflow
+    └── version.yml       # Automatic versioning workflow
 ```
 
 ## Development Workflow
@@ -111,6 +202,7 @@ src/
 3. **Build for testing** with `npm run build:win` (or appropriate platform)
 4. **Test the built application** from the `dist/` directory
 5. **Commit changes** to source control
+6. **Create release** using the release script: `./scripts/release.sh patch`
 
 ## Troubleshooting
 
@@ -119,6 +211,12 @@ src/
 - **Linux build fails on Windows**: This is expected. Linux builds must be done on a Linux system
 - **Missing dependencies**: Run `npm install` to ensure all dependencies are installed
 - **Build cache issues**: Delete `node_modules` and `dist` directories, then run `npm install` again
+
+### GitHub Actions Issues
+
+- **Permission denied**: Ensure the repository has the necessary permissions for GitHub Actions
+- **Build failures**: Check the Actions tab for detailed error logs
+- **Version conflicts**: Ensure version numbers are unique and follow semantic versioning
 
 ### Runtime Issues
 
