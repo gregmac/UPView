@@ -82,7 +82,8 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         show: false,
         useContentSize: false,
         resizable: true,
-        movable: true
+        movable: true,
+        title: 'UPView - Unifi Protect Desktop Viewer'
     })
 
     // make sure useragent is detected as compatible

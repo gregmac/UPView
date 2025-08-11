@@ -21,6 +21,7 @@ function openConfigWindow(config, onSave, parentWindow) {
         maximizable: false,
         modal: true,
         parent: parentWindow,
+        title: 'UPView Configuration',
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,

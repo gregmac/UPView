@@ -122,18 +122,18 @@ const menuTemplate = [
     {
         label: 'Help',
         submenu: [
-            {
-                label: 'About',
-                click: () => {
-                    const packageJson = require('./package.json')
-                    dialog.showMessageBox({
-                        type: 'info',
-                        title: 'About',
-                        message: `UnifiProtect Live View`,
-                        detail: `Version: ${packageJson.version}\n\nDesktop viewer for Unifi Protect`
-                    })
+                            {
+                    label: 'About',
+                    click: () => {
+                        const packageJson = require('./package.json')
+                        dialog.showMessageBox({
+                            type: 'info',
+                            title: 'About',
+                            message: `UPView - Unifi Protect Desktop Viewer`,
+                            detail: `Version: ${packageJson.version}\n\nDesktop viewer for Unifi Protect`
+                        })
+                    }
                 }
-            }
         ]
     }
 ]

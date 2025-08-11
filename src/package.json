@@ -1,7 +1,7 @@
 {
-  "name": "unifiprotectliveview-e",
+  "name": "upview",
   "version": "0.1.0",
-  "description": "Desktop viewer for Unifi Protect",
+  "description": "UPView - Unifi Protect Desktop Viewer",
   "license": "GPL-3.0-only",
   "author": "gregmac",
   "type": "commonjs",

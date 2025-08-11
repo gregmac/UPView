@@ -1,4 +1,4 @@
-# UnifiProtectLiveView-e
+# UPView - Unifi Protect Desktop Viewer
 
 A dedicated desktop application for viewing Unifi Protect camera feeds with enhanced features and automation.
 
@@ -22,8 +22,8 @@ A dedicated desktop application for viewing Unifi Protect camera feeds with enha
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
-   cd UnifiProtectLiveView-e
+   git clone https://github.com/gregmac/UPView.git
+   cd UPView
    ```
 
 2. **Install dependencies**
