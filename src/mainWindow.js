@@ -1,4 +1,4 @@
-const { BrowserWindow, screen, safeStorage } = require('electron')
+const { BrowserWindow, screen, safeStorage, shell } = require('electron')
 
 function getWindowState(mainWindow) {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -89,18 +89,19 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     // make sure useragent is detected as compatible
     mainWindow.webContents.userAgent = modifyUserAgent(mainWindow.webContents.userAgent)
 
-    mainWindow.webContents.on('will-navigate', (event) => {
-        console.log('will-navigate', event)
-    })
-    mainWindow.webContents.on('did-navigate', (event, url, httpResponseCode, httpStatusText) => {
-        console.log('did-navigate', event, url, httpResponseCode, httpStatusText)
-        // Try auto-login on navigation
-        try { attemptAutoLogin(url) } catch (e) { console.warn('[AutoLogin] did-navigate error', e) }
-    })
-    mainWindow.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
-        console.log('did-navigate-in-page', event, url, isMainFrame)
-        handleNavigation(url);
-    })
+         mainWindow.webContents.on('will-navigate', (event) => {
+         console.log('will-navigate', event)
+     })
+     mainWindow.webContents.on('did-navigate', (event, url, httpResponseCode, httpStatusText) => {
+         console.log('did-navigate', event, url, httpResponseCode, httpStatusText)
+         handleNavigation(url);
+         // Try auto-login on navigation
+         try { attemptAutoLogin(url) } catch (e) { console.warn('[AutoLogin] did-navigate error', e) }
+     })
+     mainWindow.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
+         console.log('did-navigate-in-page', event, url, isMainFrame)
+         handleNavigation(url);
+     })
     
     mainWindow.webContents.on('render-process-gone', () => {
         console.log('render-process-gone')
@@ -227,22 +228,20 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         }, 1000);
     }
     
-    // Shared function to handle navigation events
-    function handleNavigation(url) {
-        try {
-            if (isIdleExemptUrl(url)) {
-                console.log('Navigation to idle-exempt URL detected');
-                clearIdleTimeout();
-                updateStartUrl(url);
-            } else {
-                startIdleTimeout(url);
-            }
-            // Try auto-login on navigation
-            try { attemptAutoLogin(url); } catch (e) { console.warn('[AutoLogin] navigation error', e); }
-        } catch (e) {
-            console.log("Navigation handling error", e);
-        }
-    }
+         // Shared function to handle navigation events
+     function handleNavigation(url) {
+         try {
+             if (isIdleExemptUrl(url)) {
+                 console.log('Navigation to idle-exempt URL detected');
+                 clearIdleTimeout();
+                 updateStartUrl(url);
+             } else {
+                 startIdleTimeout(url);
+             }
+         } catch (e) {
+             console.log("Navigation handling error", e);
+         }
+     }
     
     // Helper function to update startUrl in config
     function updateStartUrl(url) {
@@ -518,15 +517,9 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     }
     // ===== EVENT HANDLERS =====
     
-    // Navigation events
-    mainWindow.webContents.on('did-navigate', (event, url, httpResponseCode, httpStatusText) => {
-        handleNavigation(url);
-    });
-    mainWindow.webContents.on('will-navigate', (event, url) => {
-        handleNavigation(url);
-    });
     
-    // DOM ready - initialize idle tracking and enlarge detection
+    
+         // DOM ready - initialize idle tracking and zoom detection
     mainWindow.webContents.on('dom-ready', () => {
         // Set default localStorage entries
         mainWindow.webContents.executeJavaScript(`
