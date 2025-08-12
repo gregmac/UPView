@@ -296,10 +296,10 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         idleTimeout = setTimeout(() => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 const currentUrl = mainWindow.webContents.getURL();
-                if (isEnlargedView && isIdleExemptUrl(currentUrl)) {
-                    console.log('[IdleTimeout] Timeout reached while enlarged on dashboard, exiting enlarged view');
-                    exitEnlargedView();
-                } else {
+                                 if (isEnlargedView && isIdleExemptUrl(currentUrl)) {
+                     console.log('[IdleTimeout] Timeout reached while zoomed on dashboard, exiting zoomed view');
+                     exitZoomedView();
+                 } else {
                     console.log('[IdleTimeout] Timeout reached, returning to main page:', getConfig().startUrl);
                     mainWindow.loadURL(getConfig().startUrl);
                 }
@@ -366,35 +366,38 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         try { mainWindow.webContents.executeJavaScript(script); } catch (_) {}
     }
     
-    function exitEnlargedView() {
-        const script = `(() => {
-            try {
-                // Find the enlarged viewport element
-                const enlargedElement = document.querySelector('div[style*="position: absolute"][style*="inset: 0px"][style*="width: 100%"][style*="height: 100%"]');
-                if (enlargedElement) {
-                    // Look for video elements within the enlarged viewport
-                    const videos = enlargedElement.querySelectorAll('video');
-                    if (videos.length > 0) {
-                        console.log('[ExitEnlarged] Clicking video to exit enlarged view');
-                        videos[0].click();
-                        return true;
-                    }
-                }
-                console.log('[ExitEnlarged] No enlarged view found to exit');
-                return false;
-            } catch(e) {
-                console.log('[ExitEnlarged] Error:', e);
-                return false;
-            }
-        })();`;
-        try { 
-            mainWindow.webContents.executeJavaScript(script).then((result) => {
-                if (result) {
-                    console.log('[ExitEnlarged] Successfully exited enlarged view');
-                }
-            });
-        } catch (_) {}
-    }
+         function exitZoomedView() {
+         const script = `(() => {
+             try {
+                 // Find liveview elements with zoom-out cursor and click them to zoom out
+                 const liveviewElements = document.querySelectorAll('div[class^="liveview"]');
+                 for (const el of liveviewElements) {
+                     try {
+                         const cursor = el.style.cursor.toString();
+                         if (cursor.match("zoom-out")) {
+                             console.log('[ExitZoomed] Clicking element to exit zoomed view:', el.className);
+                             el.click();
+                             return true;
+                         }
+                     } catch(e) {
+                         console.log('[ExitZoomed] Error checking cursor:', e);
+                     }
+                 }
+                 console.log('[ExitZoomed] No zoomed view found to exit');
+                 return false;
+             } catch(e) {
+                 console.log('[ExitZoomed] Error:', e);
+                 return false;
+             }
+         })();`;
+         try { 
+             mainWindow.webContents.executeJavaScript(script).then((result) => {
+                 if (result) {
+                     console.log('[ExitZoomed] Successfully exited zoomed view');
+                 }
+             });
+         } catch (_) {}
+     }
     // ===== URL UTILITY FUNCTIONS =====
     function isIdleExemptUrl(url) {
         try {
@@ -525,6 +528,21 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
     
     // DOM ready - initialize idle tracking and enlarge detection
     mainWindow.webContents.on('dom-ready', () => {
+        // Set default localStorage entries
+        mainWindow.webContents.executeJavaScript(`
+            (function() {
+                try {
+                    // Set portal:motif to "system" if not already set
+                    if (!localStorage.getItem('portal:motif')) {
+                        localStorage.setItem('portal:motif', 'system');
+                        console.log('[UPView] Set localStorage portal:motif to "system"');
+                    }
+                } catch(e) {
+                    console.warn('[UPView] Failed to set localStorage:', e);
+                }
+            })();
+        `);
+        
         // Initialize idle activity tracking
         mainWindow.webContents.executeJavaScript(`
             (function() {
@@ -538,115 +556,70 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
             })();
         `);
         
-        // Initialize enlarge detection
-        mainWindow.webContents.executeJavaScript(`
-            (function() {
-                if (window.__uplvEnlargeWatchInstalled) return; 
-                window.__uplvEnlargeWatchInstalled = true;
-                
-                function isCandidate(el) {
-                    if (!el || !el.className) return false;
-                    const s = el.className.toString();
-                    return /ZoomableViewport|liveview__Viewport|ViewportLiveStreamPlayer|LiveStreamPlayerClickCaptureOverlay/i.test(s);
-                }
-                
-                function hasEnlargedStyle(el) {
-                    if (!el) return false;
-                    
-                    // Check inline style first
-                    const styleAttr = (el.getAttribute && el.getAttribute('style')) || '';
-                    if (styleAttr) {
-                        const hasPosition = /position\\s*:\\s*absolute/i.test(styleAttr);
-                        const hasInset = /inset\\s*:\\s*0(px)?/i.test(styleAttr);
-                        const hasFullSize = /width\\s*:\\s*100%/i.test(styleAttr) && /height\\s*:\\s*100%/i.test(styleAttr);
-                        
-                        if (hasPosition && hasInset && hasFullSize) {
-                            console.log('[EnlargeWatch] Found enlarged element:', el.className, styleAttr);
-                            return true;
-                        }
-                    }
-                    
-                    // Fallback to computed style
-                    try {
-                        const cs = getComputedStyle(el);
-                        const pos = cs.position;
-                        const width = cs.width;
-                        const height = cs.height;
-                        
-                        if (pos === 'absolute' && width === '100%' && height === '100%') {
-                            console.log('[EnlargeWatch] Found enlarged element (computed):', el.className, pos, width, height);
-                            return true;
-                        }
-                    } catch(e) {
-                        console.log('[EnlargeWatch] Error checking computed style:', e);
-                    }
-                    
-                    return false;
-                }
-                
-                function detect() {
-                    const nodes = Array.from(document.querySelectorAll('div'));
-                    let found = false;
-                    
-                    for (const el of nodes) {
-                        if (!isCandidate(el)) continue;
-                        if (hasEnlargedStyle(el)) {
-                            found = true;
-                            break;
-                        }
-                    }
-                    
-                    if (document.fullscreenElement) {
-                        console.log('[EnlargeWatch] Fullscreen element found');
-                        found = true;
-                    }
-                    
-                    console.log('[EnlargeWatch] Detection result:', found);
-                    return found;
-                }
-                
-                function setState(on) {
-                    if (!window.__uplvEnlargedState || window.__uplvEnlargedState !== !!on) {
-                        window.__uplvEnlargedState = !!on;
-                        console.log(on ? 'uplv-enlarged-on' : 'uplv-enlarged-off');
-                    }
-                }
-                
-                const observer = new MutationObserver((muts) => {
-                    let relevant = false;
-                    for (const m of muts) {
-                        if (m.type === 'attributes' && (m.attributeName === 'style' || m.attributeName === 'class')) {
-                            const t = m.target;
-                            if (t && t.nodeType === 1 && isCandidate(t)) {
-                                console.log('[EnlargeWatch] Relevant mutation:', m.attributeName, t.className);
-                                relevant = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (relevant) {
-                        console.log('[EnlargeWatch] Checking state after mutation');
-                        setState(detect());
-                    }
-                });
-                
-                observer.observe(document.documentElement, { 
-                    subtree: true, 
-                    childList: true, 
-                    attributes: true, 
-                    attributeFilter: ['style','class'] 
-                });
-                
-                window.addEventListener('fullscreenchange', () => {
-                    console.log('[EnlargeWatch] Fullscreen change event');
-                    setState(detect());
-                }, true);
-                
-                // Initial detection
-                console.log('[EnlargeWatch] Initial detection');
-                setState(detect());
-            })();
-        `);
+                 // Initialize zoom detection
+         mainWindow.webContents.executeJavaScript(`
+             (function() {
+                 if (window.__uplvZoomWatchInstalled) return; 
+                 window.__uplvZoomWatchInstalled = true;
+                 
+                 function detectZoomed() {
+                     const liveviewElements = document.querySelectorAll('div[class^="liveview"]');
+                     let found = false;
+                     
+                     for (const el of liveviewElements) {
+                         try {
+                             const cursor = el.style.cursor.toString();
+                             if (cursor.match("zoom-out")) {
+                                 console.log('[ZoomWatch] Found zoom-out cursor on:', el.className);
+                                 found = true;
+                                 break;
+                             }
+                         } catch(e) {
+                             console.log('[ZoomWatch] Error checking cursor:', e);
+                         }
+                     }
+                     
+                     console.log('[ZoomWatch] Detection result:', found);
+                     return found;
+                 }
+                 
+                 function setState(on) {
+                     if (!window.__uplvZoomedState || window.__uplvZoomedState !== !!on) {
+                         window.__uplvZoomedState = !!on;
+                         console.log(on ? 'uplv-zoomed-on' : 'uplv-zoomed-off');
+                     }
+                 }
+                 
+                 const observer = new MutationObserver((muts) => {
+                     let relevant = false;
+                     for (const m of muts) {
+                         if (m.type === 'attributes' && m.attributeName === 'style') {
+                             const t = m.target;
+                             if (t && t.nodeType === 1 && t.className && t.className.toString().startsWith('liveview')) {
+                                 console.log('[ZoomWatch] Relevant mutation on liveview element:', t.className);
+                                 relevant = true;
+                                 break;
+                             }
+                         }
+                     }
+                     if (relevant) {
+                         console.log('[ZoomWatch] Checking state after mutation');
+                         setState(detectZoomed());
+                     }
+                 });
+                 
+                 observer.observe(document.documentElement, { 
+                     subtree: true, 
+                     childList: true, 
+                     attributes: true, 
+                     attributeFilter: ['style'] 
+                 });
+                 
+                 // Initial detection
+                 console.log('[ZoomWatch] Initial detection');
+                 setState(detectZoomed());
+             })();
+         `);
         
         // Try auto-login and restore overlay if needed
         try { attemptAutoLogin(mainWindow.webContents.getURL()) } catch (e) { console.warn('[AutoLogin] dom-ready error', e) }
@@ -655,16 +628,16 @@ function launchMainWindow(startUrl, modifyUserAgent, windowState, getConfig, mod
         }
     });
     
-    // Console message handling
-    mainWindow.webContents.on('console-message', (event, level, message) => {
-        if (message === 'reset-idle-timer') {
-            resetIdleTimer();
-        } else if (message === 'uplv-enlarged-on') {
-            handleEnlargedViewChange(true);
-        } else if (message === 'uplv-enlarged-off') {
-            handleEnlargedViewChange(false);
-        }
-    });
+         // Console message handling
+     mainWindow.webContents.on('console-message', (event, level, message) => {
+         if (message === 'reset-idle-timer') {
+             resetIdleTimer();
+         } else if (message === 'uplv-zoomed-on') {
+             handleEnlargedViewChange(true);
+         } else if (message === 'uplv-zoomed-off') {
+             handleEnlargedViewChange(false);
+         }
+     });
     
     // IPC message handling
     mainWindow.webContents.on('ipc-message', (event, channel) => {
