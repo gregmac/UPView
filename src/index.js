@@ -9,7 +9,7 @@ let CONFIG_PATH
 let config;
 let mainWindow = null;
 let defaultConfig = { 
-    startUrl: 'https://192.168.10.1/protect/dashboard',
+    startUrl: 'https://192.168.1.1/protect/dashboard',
     windowState: {
         width: 800,
         height: 600,
@@ -64,6 +64,19 @@ function handleOpenConfig() {
             mainWindow = launchMainWindow(new URL(config.startUrl), modifyUserAgent, config.windowState, getConfig, modifyConfig)
         }
     }, BrowserWindow.getAllWindows()[0])
+}
+
+// Function to get default gateway IP using the default-gateway package
+async function getDefaultGatewayIP() {
+    try {
+        const { gateway4async } = await import('default-gateway')
+        const result = await gateway4async()
+        console.log(`Detected default gateway: ${result.gateway}`)
+        return result.gateway
+    } catch (error) {
+        console.warn('Failed to detect default gateway, using fallback:', error.message)
+        return '192.168.1.1' // fallback
+    }
 }
 
 const menuTemplate = [
@@ -142,9 +155,20 @@ Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate))
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     CONFIG_PATH = path.join(app.getPath('userData'), 'config.json')
     config = loadConfig()
+
+    // If no config exists, get the default gateway IP and set it as the default startUrl
+    if (!config) {
+        try {
+            const gatewayIP = await getDefaultGatewayIP()
+            defaultConfig.startUrl = `https://${gatewayIP}/protect/dashboard`
+            console.log(`Using default gateway IP: ${gatewayIP}`)
+        } catch (error) {
+            console.warn('Failed to detect default gateway, using fallback:', error)
+        }
+    }
 
     if (!config || !config.startUrl) {
         handleOpenConfig()
