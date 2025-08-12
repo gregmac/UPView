@@ -40,7 +40,7 @@ jobs:
         with:
           github_token: ${{ secrets.github_token }}
           release: ${{ startsWith(github.ref, 'refs/tags/') }}
-          working-directory: src
+          package_root: src
         env:
           GH_TOKEN: ${{ secrets.github_token }}
 
