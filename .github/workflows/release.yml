@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.3)'
+        required: true
+        type: string
 
 jobs:
   release:
@@ -34,6 +40,29 @@ jobs:
       - name: Install dependencies
         working-directory: src
         run: npm ci
+
+      - name: Update version if needed
+        working-directory: src
+        run: |
+          # Determine target version
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TARGET_VERSION="${{ github.event.inputs.version }}"
+          else
+            # Extract version from tag (e.g., v1.2.3 -> 1.2.3)
+            TARGET_VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          
+          echo "Current version: $CURRENT_VERSION"
+          echo "Target version: $TARGET_VERSION"
+          
+          if [[ "$CURRENT_VERSION" != "$TARGET_VERSION" ]]; then
+            echo "Updating version from $CURRENT_VERSION to $TARGET_VERSION"
+            npm version $TARGET_VERSION --no-git-tag-version
+          else
+            echo "Version already matches target version"
+          fi
 
       - name: Build/Release Electron app
         uses: samuelmeuli/action-electron-builder@v1
