@@ -1,11 +1,7 @@
-name: Version and Tag
+name: Auto Version and Tag
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '.github/workflows/version.yml'
+  workflow_dispatch:
 
 jobs:
   version:
