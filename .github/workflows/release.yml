@@ -42,6 +42,7 @@ jobs:
         run: npm ci
 
       - name: Update version if needed
+        shell: bash
         working-directory: src
         run: |
           # Determine target version
